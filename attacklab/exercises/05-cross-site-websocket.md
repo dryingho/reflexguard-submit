@@ -50,7 +50,7 @@ LAB_VERSION=after docker compose up --build -d
 
 - (가): `403`, `audit-portal-*.jsonl`에 `blocked / allowed_hosts`. Webots 대역에는 아무것도 남지 않습니다.
 - (나):
-  - 로그인 없이는 `401`(3단계 인증)입니다.
+  - 로그인 없이는 `401`([3단계](../README.md#본편의-보안-조치-단계) 인증)입니다.
   - 로그인한 사용자의 브라우저라도 다른 사이트가 연 것이면 `403`(출처 확인)입니다. 확인하려면 관찰의 `curl`에 `-H "X-Token: lab-secret"`을 더해 보세요. 그래도 `403`입니다.
   - Webots 대역에 `webots-connect`가 생기지 않습니다.
 - 두 경우 모두 정상 조작 화면(<http://127.0.0.1:8443/>)은 그대로 연결돼야 합니다.

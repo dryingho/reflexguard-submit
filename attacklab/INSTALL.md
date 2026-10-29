@@ -19,7 +19,15 @@
 | 포트 | `127.0.0.1`의 8080·8766·8765·8443이 비어 있어야 함 |
 | 저장소 | **프로젝트 폴더 전체** (랩 이미지가 저장소 루트를 빌드에 씁니다. `attacklab/`만으로는 안 됨) |
 
-다른 PC에서 `git clone`으로 받으려면 `attacklab/`이 커밋·푸시되어 있어야 합니다. 그렇지 않으면 프로젝트 폴더를 통째로 복사해 갑니다.
+저장소를 아직 받지 않았다면 받습니다.
+
+```bash
+git clone https://github.com/dryingho/reflexguard-submit.git
+```
+
+```bash
+cd reflexguard-submit
+```
 
 ## 1. 도커 설치
 
@@ -114,6 +122,7 @@ sudo docker compose down
 |---|---|
 | `port is already allocated` | 본편 서비스가 그 포트를 쓰고 있음 → 2단계 |
 | `permission denied ... docker.sock` | `sudo`를 붙이거나, 1단계의 post-install(sudo 없이 쓰기) 설정 뒤 다시 로그인 |
+| `server`가 계속 다시 시작하고 로그에 `PermissionError: … /app/attacklab/logs/…` | 호스트의 `attacklab/logs` 폴더를 컨테이너 사용자(`lab`, uid 1000)가 쓰지 못함. 폴더가 root 소유면 `sudo chown 1000:1000 logs` 뒤 다시 띄우기 (저장소의 `logs/.gitkeep` 덕에 보통은 받은 계정 소유로 생깁니다) |
 | 빌드 중 `pip`·이미지 받기 실패 | 인터넷·프록시 확인 |
 | 관제 화면에 로봇이 없음 | `sudo docker compose logs client`로 오류 확인. 서버가 늦게 떴다면 몇 초 뒤 자동으로 다시 접속함 |
 | WSL에서 도커 데몬(뒤에서 늘 도는 도커 본체)이 안 뜸 | WSL에 systemd(서비스를 자동으로 켜 주는 관리자)가 꺼져 있으면 `sudo service docker start`로 직접 켜기 |
