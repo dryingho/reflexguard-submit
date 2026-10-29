@@ -1,0 +1,9 @@
+# 어택랩 도커 빌드에서 뺄 것 (빌드 컨텍스트 = 저장소 루트)
+.git
+.venv
+**/__pycache__
+**/*.pyc
+attacklab/logs/*.jsonl
+logs/
+screenshots/
+.pytest_cache

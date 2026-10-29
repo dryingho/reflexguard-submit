@@ -1,0 +1,7 @@
+# 보안 점검 도구 — setup.sh security·CI가 이 잠금(security.txt)을 해시로 확인하며 설치한다 (KISA SW 공급망 체크리스트 8)
+# 바꾸려면 판을 고친 뒤 (Python 3.10):
+#   pip-compile --generate-hashes --allow-unsafe --strip-extras --no-header -o tools/locks/security.txt tools/locks/security.in
+# 제품(.venv)과 따로 .venv-security·CI에만 설치한다 — 점검 도구의 의존성이 제품에 섞이지 않게.
+bandit==1.9.4
+pip-audit==2.10.1
+semgrep==1.182.1

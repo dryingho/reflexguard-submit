@@ -1,0 +1,14 @@
+# 점검 도구(tools/locks/security.txt)의 알려진 취약점 중 '경로 없음'으로 판정해 pip-audit에서 빼는 것 (SECURITY.md 대응 절차 2단계)
+# 형식: <취약점 ID>  # 패키지 판 — 판정 근거 · 판정일 · 다시 볼 조건
+# 제품 의존성(requirements*.txt)에는 예외를 두지 않는다.
+CVE-2026-59951   # mcp 1.29.0 (semgrep 1.182.1이 ==1.29.0으로 묶음) — MCP HTTP 서버의 세션 정리 문제. 우리는 semgrep scan만 쓰고 MCP 서버(semgrep mcp)를 띄우지 않음 · 2026-10-26 · semgrep이 mcp>=1.30을 허용하면 올리고 이 줄을 지운다
+CVE-2026-114603  # opentelemetry-api 1.37.0 (semgrep이 ~=1.37.0으로 묶음) — 들어오는 tracestate 헤더 파싱 ReDoS. semgrep scan은 바깥 HTTP 요청을 받지 않음(지표 전송도 --metrics=off) · 2026-10-26 · semgrep이 1.45.1 이상을 허용하면 올린다
+CVE-2026-112906  # filelock 4.1.0 (cachecontrol ← pip-audit) — 고친 판(4.2.1+)은 Python 3.11 이상만. 여러 사용자가 함께 쓰는 폴더의 잠금 파일 경쟁·링크 문제로, 우리는 이 계정의 pip-audit 캐시에서만 씀 · 2026-10-26 · 점검 도구 환경을 3.11+로 옮기면 올리고 아래 filelock 줄들을 지운다
+CVE-2026-112940  # filelock 4.1.0 — 위와 같음 (ReadWriteLock을 쓰지 않음)
+CVE-2026-112914  # filelock 4.1.0 — 위와 같음
+CVE-2026-112913  # filelock 4.1.0 — 위와 같음 (Windows 전용)
+CVE-2026-112937  # filelock 4.1.0 — 위와 같음 (ReadWriteLock을 쓰지 않음)
+CVE-2026-112907  # filelock 4.1.0 — 위와 같음 (Windows 전용)
+CVE-2026-116684  # mcp 1.29.0 (semgrep 1.182.1이 ==1.29.0으로 묶음, 최신 semgrep도 같음) — MCP 서버 bearer 토큰 인증이 다른 서비스용 토큰도 받음(CVSS 6.8). 우리는 semgrep scan만 쓰고 MCP 서버(semgrep mcp)를 띄우지 않음 · 2026-10-28 · semgrep이 mcp>=1.30을 허용하면 올리고 mcp 줄들을 지운다
+CVE-2026-116685  # mcp 1.29.0 — MCP HTTP 클라이언트가 다른 출처로 넘겨줄 때 헤더·본문도 보냄(CVSS 5.9). MCP 클라이언트로 어디에도 붙지 않음 · 2026-10-28 · 위와 같음
+CVE-2026-116686  # mcp 1.29.0 — MCP 클라이언트가 서버가 준 출력 스키마의 $ref 주소를 열어 봄(CVSS 6.5). MCP 클라이언트로 어디에도 붙지 않음 · 2026-10-28 · 위와 같음

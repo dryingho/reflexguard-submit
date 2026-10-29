@@ -1,0 +1,2052 @@
+<!DOCTYPE html>
+<!--
+  ReflexGuard 웹 조작 화면 (Webots 로봇 창)
+
+  Webots가 이 파일을 직접 서비스한다:
+      http://localhost:1234/robot_windows/reflexguard/reflexguard.html?name=reflexguard
+  하는 일: 키보드 W A S D와 조이스틱(마우스·터치) 입력을 컨트롤러로 보내고, 컨트롤러가 보내 주는 1인칭 카메라 영상을 보여 준다.
+  회피 반사의 흐름(① 루밍 감지 → ② 커넥톰 회피 반사 → ③ 공유 제어)을 패널로 보여 주고,
+  반사가 작동하면 영상 바로 아래 '지금 동작' 줄에 알린다(영상을 가리지 않게). 최근 기록(작동·충돌·도착·스위치)도 남긴다
+  (전체 기록은 logs/reflex_*.jsonl).
+  영상 아래에 도착지(바닥의 초록 바둑판)까지의 거리·방향을 보여 주고, 도착하면 걸린 시간과 커넥톰 개입 횟수를 알린다.
+  여러 기기에서 동시에 열어도 된다 (각 화면의 입력을 컨트롤러가 합쳐서 적용한다).
+  체험·조작 포털(demo/server.py — scripts/run.sh가 켠다)로 열면 머리줄에 '휴대폰 카메라' 스위치가 생긴다. 켜면 Webots 대신
+  이 기기의 카메라 영상을 포털로 보내 같은 파이프라인(루밍 → 커넥톰 → 공유 제어)을 돌리고, 결과를 같은 패널에 그린다.
+  외부 파일(글꼴, 라이브러리, CDN)을 전혀 쓰지 않으므로 인터넷이 없어도 동작한다.
+-->
+<html lang="ko">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="dark light">
+  <meta name="theme-color" content="#0f1216" media="(prefers-color-scheme: dark)">
+  <meta name="theme-color" content="#f3f4f6" media="(prefers-color-scheme: light)">
+  <title>ReflexGuard 조작 화면</title>
+  <link rel="icon" type="image/png" sizes="32x32" data-brand="favicon" href="data:image/png;base64,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">
+  <style>
+    :root {
+      color-scheme: dark light;
+      --bg: #0d1016;
+      --surface: #151a22;
+      --surface-2: #1c222c;
+      --line: #252c38;
+      --line-strong: #3d4656;
+      --text: #e7ebf1;
+      --muted: #96a0b0;
+      --accent: #5b9bff;
+      --on-accent: #0b1220;
+      --danger: #ff7b72;
+      --warn: #e3b341;
+      --good: #3fb950;
+      --radius: 12px;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 8px 24px rgb(0 0 0 / 0.18);
+    }
+    @media (prefers-color-scheme: light) {
+      :root {
+        --bg: #f3f5f9;
+        --surface: #ffffff;
+        --surface-2: #f2f4f8;
+        --line: #dfe4ec;
+        --line-strong: #9aa4b2;
+        --text: #171a1f;
+        --muted: #525b69;
+        --accent: #1f5fd0;
+        --on-accent: #fcfcfd;
+        --danger: #b3261e;
+        --warn: #9a6700;
+        --good: #1a7f37;
+        --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 6px 18px rgb(16 24 40 / 0.06);
+      }
+    }
+
+    * { box-sizing: border-box; }
+    html { -webkit-text-size-adjust: 100%; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font: 15px/1.5 system-ui, "Pretendard", "Apple SD Gothic Neo", "Malgun Gothic", "Noto Sans KR", sans-serif;
+      word-break: keep-all;  /* 한글이 낱말 중간에서 줄바꿈되지 않게 */
+      touch-action: manipulation;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    .console {
+      min-height: 100dvh;
+      max-width: 1680px;
+      margin: 0 auto;
+      padding: max(14px, env(safe-area-inset-top)) max(16px, env(safe-area-inset-right)) max(16px, env(safe-area-inset-bottom)) max(16px, env(safe-area-inset-left));
+      display: grid;
+      grid-template-columns: minmax(0, 1fr);
+      grid-template-areas: "bar" "drive" "flow" "side";  /* 좁은 화면(휴대폰): 영상 → 회피 반사 흐름 → 제어·최근 기록 */
+      align-content: start;
+      gap: 14px;
+    }
+    .bar { grid-area: bar; }
+    .drive { grid-area: drive; display: grid; justify-items: center; align-content: start; gap: 10px; min-width: 0;
+             --view-width: min(100%, calc((100dvh - 390px) * var(--aspect, 1.7778))); }  /* 영상 아래 상태 줄·조이스틱이 화면 안에 들게 */
+    .flow { grid-area: flow; }
+    .side { grid-area: side; }
+
+    /* 넓은 화면: 영상 오른쪽에 흐름, 그 아래 제어·최근 기록 */
+    @media (min-width: 980px) {
+      .console { grid-template-columns: minmax(0, 1fr) 340px; grid-template-areas: "bar bar" "drive flow" "drive side"; column-gap: 18px; }
+    }
+    /* 아주 넓은 화면: 세 칸 — 한눈에 영상·흐름·제어·최근 기록이 다 보인다 */
+    @media (min-width: 1360px) {
+      .console { grid-template-columns: minmax(0, 1fr) 330px 330px; grid-template-areas: "bar bar bar" "drive flow side"; }
+      .side { position: sticky; top: 14px; max-height: calc(100dvh - 86px); grid-template-rows: auto auto auto minmax(0, 1fr) auto; }
+      .side .events { overflow: auto; min-height: 0; padding-right: 2px; }
+    }
+
+    .bar {
+      width: 100%;
+      display: flex;
+      flex-wrap: wrap;  /* 상태 문구가 길어 제목 옆에 안 들어가면 다음 줄로 내린다 */
+      align-items: center;
+      gap: 8px 14px;
+      padding: 10px 14px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    h1 {
+      margin: 0;
+      display: flex;
+      align-items: center;
+      gap: 9px;
+      font-size: 15px;
+      font-weight: 700;
+      letter-spacing: -0.01em;
+      white-space: nowrap;
+    }
+    /* 로고 마크: 어두운 화면은 남색을 밝게 한 것, 밝은 화면은 원래 색 (assets/brand — tools/brand.py가 넣는다) */
+    .logo { flex: none; display: block; }
+    .logo-light { display: none; }
+    @media (prefers-color-scheme: light) { .logo-light { display: block; } .logo-dark { display: none; } }
+    h1 span { color: var(--muted); font-weight: 500; }
+    /* 지금 공유 제어 단계: 머리줄에서 한눈에 */
+    .now { display: inline-flex; align-items: center; gap: 8px; padding: 4px 12px 4px 10px; border-radius: 999px;
+           border: 1px solid var(--line-strong); background: var(--surface-2); font-size: 13px; font-weight: 650; white-space: nowrap; }
+    .now::before { content: ""; width: 9px; height: 9px; border-radius: 50%; background: var(--good); }
+    .now small { color: var(--muted); font-weight: 500; font-variant-numeric: tabular-nums; }
+    .now[data-tone="warn"] { border-color: var(--warn); color: var(--warn); }
+    .now[data-tone="warn"]::before { background: var(--warn); }
+    .now[data-tone="danger"] { border-color: var(--danger); background: var(--danger); color: var(--on-accent); }
+    .now[data-tone="danger"]::before { background: var(--on-accent); }
+    .now[data-tone="danger"] small { color: var(--on-accent); }
+    .now[data-tone="accent"] { border-color: var(--accent); color: var(--accent); }
+    .now[data-tone="accent"]::before { background: var(--accent); }
+    .now[data-tone="off"]::before { background: var(--line-strong); }
+    .now[hidden] { display: none; }
+    .cam-switch[hidden] { display: none; }
+    .cam-switch { padding: 4px 6px 4px 10px; border: 1px solid var(--line-strong); border-radius: 999px; }
+    .switch.cam-switch[aria-checked="false"] { color: var(--muted); }  /* 꺼짐은 '끊김'(빨강)이 아니라 회색 */
+    .switch.cam-switch[aria-checked="false"] .track { background: var(--line-strong); }
+    .switch.cam-switch[aria-checked="true"] { color: var(--accent); border-color: var(--accent); }
+    /* 카메라 체험: 시뮬레이션에만 쓰는 것(조이스틱·도착지·맵·위험 인식·커넥톰·안전 스위치)은 숨기고 설정을 보인다 */
+    body[data-mode="camera"] .controls, body[data-mode="camera"] .trip, body[data-mode="camera"] .sim-only { display: none; }
+    .view video { display: block; width: 100%; height: 100%; object-fit: contain; background: #000; }
+    .view video[hidden] { display: none; }
+    .cam-box { width: var(--view-width); min-width: min(100%, 280px); display: grid; gap: 10px; padding: 12px 14px;
+               background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); box-shadow: var(--shadow); }
+    .cam-box[hidden] { display: none; }
+    .cam-row { margin: 0; display: flex; flex-wrap: wrap; align-items: center; justify-content: space-between; gap: 6px 12px; font-size: 13.5px; }
+    .cam-row small { display: block; color: var(--muted); font-size: 11.5px; }
+    .cam-row.checks { justify-content: flex-start; gap: 6px 18px; }
+    .cam-row.checks label { display: inline-flex; align-items: center; gap: 6px; }
+    .cam-row.sens { flex-wrap: nowrap; }
+    .cam-row.sens .range { display: flex; align-items: center; gap: 6px; flex: 1; max-width: 260px; font-size: 11.5px; color: var(--muted); }
+    /* 오른쪽으로 밀수록 민감 = 정지 기준(위험도)이 낮다 */
+    #cam-stop { flex: 1; min-width: 0; direction: rtl; }
+    .cam-note { margin: 0; color: var(--muted); font-size: 12.5px; }
+    .cam-note.error { color: var(--danger); font-weight: 600; }
+    .cam-note[hidden] { display: none; }
+
+    /* 연결 상태: 점의 색이 실제 상태를 나타낸다 */
+    .status {
+      margin: 0 0 0 auto;
+      max-width: 100%;
+      color: var(--muted);
+      font-size: 14px;
+      overflow-wrap: anywhere;
+    }
+    .status::before {
+      content: "";
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      margin-right: 8px;
+      border-radius: 50%;
+      background: var(--line-strong);
+    }
+    .status[data-state="live"]::before { background: var(--accent); }
+    .status[data-state="offline"] { color: var(--danger); }
+    .status[data-state="offline"]::before { background: var(--danger); }
+
+    /* 카메라 영상: 조이스틱이 화면 밖으로 밀리지 않도록 세로 높이에 맞춰 폭을 줄인다 */
+    .view {
+      position: relative;
+      width: var(--view-width);
+      min-width: min(100%, 280px);
+      aspect-ratio: var(--aspect, 1.7778);
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      overflow: hidden;
+    }
+    .view img {
+      display: block;
+      width: 100%;
+      height: 100%;
+      object-fit: contain;
+      opacity: 1;
+      transition: opacity 200ms ease-out;
+    }
+    .view img[hidden] { display: none; }
+    /* 위험도 겹쳐 보기: 영상과 같은 격자(looming_grid_rows × cols)로 칸마다 커넥톰(LPLC2) 입력을 빨갛게 */
+    .heat { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; }
+    .heat[hidden] { display: none; }
+    .heat-toggle {
+      position: absolute; top: 8px; right: 8px; z-index: 2;
+      display: inline-flex; align-items: center; gap: 6px;
+      padding: 4px 10px; border-radius: 999px; font: inherit; font-size: 12.5px; cursor: pointer;
+      color: var(--text); background: rgb(15 18 22 / 0.72); border: 1px solid var(--line-strong);
+    }
+    .heat-toggle::before { content: ""; width: 8px; height: 8px; border-radius: 50%; background: var(--muted); }
+    .heat-toggle[aria-checked="true"] { border-color: var(--danger); }
+    .heat-toggle[aria-checked="true"]::before { background: var(--danger); }
+    .heat-legend {
+      position: absolute; top: 40px; right: 8px; z-index: 2; margin: 0;
+      display: flex; align-items: center; gap: 6px; padding: 3px 8px; border-radius: 6px;
+      font-size: 11.5px; color: #e6e9ee; background: rgb(15 18 22 / 0.72);
+    }
+    .heat-legend[hidden] { display: none; }
+    .heat-legend i { width: 48px; height: 8px; border-radius: 2px;
+                     background: linear-gradient(90deg, rgb(255 90 60 / 0.08), rgb(255 90 60 / 0.75)); }
+    .heat-legend u { width: 10px; height: 8px; border: 1.5px dashed rgb(220 225 232 / 0.85); border-radius: 1px; text-decoration: none; }
+    .heat-legend s { width: 10px; height: 8px; border-radius: 2px; text-decoration: none;
+                     background: rgb(0 0 0 / 0.55); outline: 1px solid rgb(255 255 255 / 0.25); }
+    .view[data-stale="true"] img { opacity: 0.45; }  /* 새 영상이 끊기면 흐리게: 지금 보이는 화면이 현재가 아님을 알린다 */
+    .placeholder {
+      position: absolute;
+      inset: 0;
+      margin: 0;
+      display: grid;
+      place-items: center;
+      padding: 16px;
+      color: var(--muted);
+      text-align: center;
+    }
+    .placeholder[hidden] { display: none; }
+
+    .controls { display: grid; justify-items: center; align-content: start; gap: 10px; }
+
+    /* 조이스틱: 위 W(전진), 아래 S(후진), 왼쪽 A(좌회전), 오른쪽 D(우회전). 둘레의 글자가 지금 입력을 보여 준다 */
+    .joystick {
+      display: grid;
+      grid-template-areas: ". w ." "a stick d" ". s .";
+      grid-template-columns: 44px auto 44px;
+      align-items: center;
+      justify-items: center;
+      gap: 4px;
+    }
+    .dir {
+      display: grid;
+      justify-items: center;
+      color: var(--muted);
+      user-select: none;
+      -webkit-user-select: none;
+    }
+    .dir b { font: 650 16px/1.1 ui-monospace, "SF Mono", "Cascadia Mono", Consolas, monospace; }
+    .dir small { font-size: 11px; line-height: 1.2; }
+    .dir[data-key="W"] { grid-area: w; }
+    .dir[data-key="A"] { grid-area: a; }
+    .dir[data-key="S"] { grid-area: s; }
+    .dir[data-key="D"] { grid-area: d; }
+    .dir[data-on="true"] { color: var(--accent); }
+
+    .stick {
+      --size: 156px;
+      --knob: 60px;
+      grid-area: stick;
+      position: relative;
+      width: var(--size);
+      height: var(--size);
+      border: 1px solid var(--line);
+      border-radius: 50%;
+      background:
+        linear-gradient(var(--line), var(--line)) center / 1px 70% no-repeat,
+        linear-gradient(var(--line), var(--line)) center / 70% 1px no-repeat,
+        var(--surface);
+      cursor: grab;
+      user-select: none;
+      -webkit-user-select: none;
+      -webkit-touch-callout: none;
+      touch-action: none;  /* 끄는 동안 화면이 스크롤되어 입력이 끊기지 않게 */
+    }
+    .stick:hover { border-color: var(--line-strong); }
+    .stick[data-active="true"] { border-color: var(--accent); cursor: grabbing; }
+    .knob {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      width: var(--knob);
+      height: var(--knob);
+      margin: calc(var(--knob) / -2) 0 0 calc(var(--knob) / -2);
+      border-radius: 50%;
+      background: var(--line-strong);
+      box-shadow: 0 1px 3px rgb(0 0 0 / 0.35);
+      transform: translate(var(--x, 0px), var(--y, 0px));
+      transition: transform 120ms ease-out;  /* 손을 떼면 가운데로 부드럽게 돌아온다 */
+      pointer-events: none;
+    }
+    .stick[data-active="true"] .knob { background: var(--accent); transition: none; }  /* 잡고 있는 동안은 포인터를 바로 따라온다 */
+    .knob[data-on="true"] { background: var(--accent); }
+
+    .hint { margin: 0; max-width: 40em; color: var(--muted); font-size: 13px; text-align: center; text-wrap: balance; }
+
+    /* 지금 동작 줄: 영상 바로 아래, 영상과 같은 폭. 개입·충돌·도착이면 색 띠 알림, 아니면 '개입 없음' (높이가 같아 화면이 들썩이지 않는다) */
+    .banner { width: var(--view-width); min-width: min(100%, 280px); display: grid; }
+    .alert, .idle {
+      --tone: var(--accent);
+      grid-area: 1 / 1;
+      margin: 0;
+      min-height: 58px;
+      padding: 9px 14px 9px 16px;
+      border-radius: var(--radius);
+      display: grid;
+      align-content: center;
+      gap: 1px;
+      line-height: 1.35;
+    }
+    .alert {
+      background: var(--tone);
+      color: var(--on-accent);
+      box-shadow: var(--shadow);
+      animation: alert-in 160ms ease-out;
+    }
+    .idle { background: var(--surface); border: 1px solid var(--line); box-shadow: var(--shadow) , inset 4px 0 0 var(--good); }
+    .idle b { font-size: 14.5px; }
+    .idle span { color: var(--muted); font-size: 13px; }
+    .idle[data-tone="warn"] { box-shadow: var(--shadow), inset 4px 0 0 var(--warn); }
+    .idle[data-tone="off"] { box-shadow: var(--shadow), inset 4px 0 0 var(--line-strong); }
+    .alert:not([hidden]) + .idle { visibility: hidden; }
+    .alert[hidden] { display: none; }
+    .alert b { display: block; font-size: 15.5px; }
+    .alert span { display: block; font-size: 13px; }
+    .alert[data-stage="slow"] { --tone: var(--warn); }
+    .alert[data-stage="stop"] { --tone: var(--danger); }
+    .alert[data-ended="true"] { --tone: var(--line-strong); color: var(--text); }
+    .alert[data-stage="crash"] { --tone: var(--danger); color: var(--on-accent); }
+    .alert[data-stage="crash"] b { font-size: 16.5px; }
+    .view[data-crash="true"] { border-color: var(--danger); box-shadow: 0 0 0 3px var(--danger); }  /* 충돌 뒤 멈춰 있는 동안 */
+    .alert[data-stage="arrival"] { --tone: var(--good); color: var(--on-accent); }
+    .alert[data-stage="arrival"] b { font-size: 16.5px; }
+    .view[data-arrived="true"] { border-color: var(--good); box-shadow: 0 0 0 3px var(--good); }  /* 도착해서 멈춰 있는 동안 */
+
+    /* 도착지 안내: 영상 아래 한 줄. 화살표는 로봇 정면 기준 도착지 방향 */
+    .trip { margin: 0; display: flex; flex-wrap: wrap; align-items: baseline; justify-content: center; gap: 2px 10px;
+            font-size: 14px; color: var(--muted); font-variant-numeric: tabular-nums; }
+    .trip[hidden] { display: none; }
+    .trip b { color: var(--text); font-weight: 650; }
+    .goal-arrow { display: inline-block; color: var(--good); font-weight: 700; transform: rotate(var(--bearing, 0deg));
+                  transition: transform 200ms ease-out; }
+    .trip[data-arrived="true"] b { color: var(--good); }
+    @keyframes alert-in { from { opacity: 0; transform: translateY(6px); } }
+
+    /* 흐름 패널: ① 루밍 → ② 커넥톰 → ③ 공유 제어. 지금 작동 중인 칸에 테두리 색을 넣는다 */
+    .flow { display: grid; align-content: start; gap: 10px; min-width: 0; font-size: 13px; transition: opacity 200ms; }
+    .flow[data-stale="true"] { opacity: 0.55; }
+    .flow h2 { margin: 0; font-size: 14px; font-weight: 650; display: flex; justify-content: space-between; gap: 8px; }
+    .flow h2 small { color: var(--muted); font-weight: 450; font-size: 12px; font-variant-numeric: tabular-nums; }
+    .flow h2 .sound { margin-left: auto; display: inline-flex; align-items: center; gap: 5px; color: var(--muted); font-weight: 450; font-size: 12px; }
+    .steps, .events { list-style: none; margin: 0; padding: 0; display: grid; gap: 6px; }
+    .step {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 5px;
+    }
+    .step[data-hot="true"] { border-color: var(--tone, var(--accent)); box-shadow: inset 3px 0 0 var(--tone, var(--accent)); }
+    .step h3 { margin: 0 0 2px; font-size: 13px; font-weight: 650; display: flex; align-items: baseline; gap: 6px; flex-wrap: wrap; }
+    .step h3 small { color: var(--muted); font-weight: 450; font-size: 11px; }
+    .step h3 em { margin-left: auto; font-style: normal; font-size: 11px; font-weight: 650; color: var(--tone, var(--accent)); }
+    .step[data-hot="false"] h3 em { visibility: hidden; }
+    .step[data-off="true"] { border-style: dashed; }
+    #step-brain[data-off="true"] .meter, #step-brain[data-off="true"] .kv { opacity: 0.45; }  /* 판단 없음: 값이 의미 없다 */
+
+    /* 커넥톰 연결 스위치: 끄면 커넥톰 판단이 아예 없는 상태 → 공유 제어가 안전 정지 */
+    .switch {
+      display: inline-flex;
+      align-items: center;
+      gap: 8px;
+      padding: 0;
+      border: 0;
+      background: none;
+      color: var(--accent);
+      font: inherit;
+      font-size: 12px;
+      font-weight: 650;
+      cursor: pointer;
+    }
+    .switch .track { position: relative; width: 34px; height: 20px; border-radius: 999px; background: var(--accent); transition: background 120ms; }
+    .switch .track::after {
+      content: "";
+      position: absolute;
+      top: 2px;
+      left: 2px;
+      width: 16px;
+      height: 16px;
+      border-radius: 50%;
+      background: var(--surface);
+      transform: translateX(14px);
+      transition: transform 120ms;
+    }
+    .switch[aria-checked="false"] { color: var(--danger); }
+    .switch[aria-checked="false"] .track { background: var(--danger); }
+    .switch[aria-checked="false"] .track::after { transform: none; }
+    .switch[aria-busy="true"] { opacity: 0.6; cursor: progress; }
+    .switch:disabled { color: var(--muted); cursor: not-allowed; }
+    .switch:disabled .track { background: var(--line-strong); }
+    .switch:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; border-radius: 4px; }
+    .switch-row { align-items: center; }
+    /* 안전 스위치: 켜면 보호가 없어지므로 경고색, 꺼짐은 회색 */
+    .switch[data-kind="safety"][aria-checked="false"] { color: var(--muted); }
+    .switch[data-kind="safety"][aria-checked="false"] .track { background: var(--line-strong); }
+    .switch[data-kind="safety"][aria-checked="true"] { color: var(--warn); }
+    .switch[data-kind="safety"][aria-checked="true"] .track { background: var(--warn); }
+    .switch-box {
+      padding: 10px 12px;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      background: var(--surface);
+      box-shadow: var(--shadow);
+      display: grid;
+      gap: 6px;
+    }
+    .side { display: grid; align-content: start; gap: 10px; min-width: 0; font-size: 13px; }
+    .side h2 { margin: 0; font-size: 14px; font-weight: 650; display: flex; justify-content: space-between; align-items: baseline; gap: 8px; }
+    .side h2 small { color: var(--muted); font-weight: 450; font-size: 12px; }
+    .switch-box .kv > span small { display: block; font-size: 11px; color: var(--muted); }
+    .mode { margin: 2px 0 0; font-size: 12px; color: var(--muted); }
+    .map-select {
+      font: inherit;
+      font-size: 13px;
+      padding: 3px 6px;
+      border: 1px solid var(--line-strong);
+      border-radius: 6px;
+      background: var(--surface);
+      color: var(--text);
+      max-width: 60%;
+    }
+    .map-select:disabled { color: var(--muted); cursor: progress; }
+    /* 위험 인식 센서: 두 칸짜리 버튼 — 지금 쓰는 쪽이 채워진다 */
+    .seg { display: inline-flex; border: 1px solid var(--line-strong); border-radius: 6px; overflow: hidden; }
+    .seg button {
+      font: inherit; font-size: 12px; font-weight: 650; padding: 4px 10px; border: 0; background: var(--surface);
+      color: var(--muted); cursor: pointer;
+    }
+    .seg button + button { border-left: 1px solid var(--line-strong); }
+    .seg button[aria-pressed="true"] { background: var(--accent); color: var(--on-accent); }
+    .seg button:hover:not(:disabled):not([aria-pressed="true"]) { color: var(--text); }
+    .seg button:disabled { cursor: not-allowed; }
+    .seg[aria-busy="true"] button { cursor: progress; opacity: 0.6; }
+    .seg button:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+    .mode[data-mode="blocked"] { color: var(--danger); font-weight: 650; }
+    .mode[data-mode="manual"] { color: var(--warn); font-weight: 650; }
+    .badge { padding: 1px 10px; border-radius: 999px; background: var(--danger); color: var(--on-accent); font-size: 12px; font-weight: 650; white-space: nowrap; }
+    .badge[hidden] { display: none; }
+    .badge[data-tone="warn"] { background: var(--warn); }
+    .arrow { text-align: center; color: var(--muted); line-height: 1; font-size: 12px; }
+
+    .meter { display: grid; grid-template-columns: 7.6em minmax(0, 1fr) 3.2em; align-items: center; gap: 8px; }
+    .meter > span { color: var(--muted); white-space: nowrap; }
+    .meter output { text-align: right; font-variant-numeric: tabular-nums; }
+    .bar-track { position: relative; height: 8px; border-radius: 4px; background: var(--line); overflow: hidden; }
+    .bar-track i { position: absolute; inset: 0 auto 0 0; width: calc(var(--v, 0) * 100%); background: var(--tone, var(--accent)); border-radius: 4px; }
+    .bar-track .tick { position: absolute; top: 0; bottom: 0; width: 2px; left: calc(var(--at) * 100%); background: var(--text); opacity: 0.8; }
+    .kv { margin: 0; display: flex; justify-content: space-between; gap: 8px; }
+    .kv > span { color: var(--muted); }
+    .kv b { font-weight: 600; font-variant-numeric: tabular-nums; }
+    .chip { padding: 0 8px; border-radius: 999px; border: 1px solid var(--line-strong); font-size: 12px; }
+    .chip[data-tone="warn"] { border-color: var(--warn); color: var(--warn); }
+    .chip[data-tone="danger"] { border-color: var(--danger); color: var(--danger); }
+    .chip[data-tone="accent"] { border-color: var(--accent); color: var(--accent); }
+    .neurons { margin: 0; color: var(--muted); font-size: 12px; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .cmd { width: 100%; border-collapse: collapse; font-variant-numeric: tabular-nums; }
+    .cmd th, .cmd td { padding: 1px 0; text-align: right; font-weight: 450; }
+    .cmd th:first-child { text-align: left; color: var(--muted); }
+    .cmd thead th { color: var(--muted); font-size: 11px; }
+    .cmd td[data-changed="true"] { color: var(--tone, var(--accent)); font-weight: 650; }
+
+    .events { gap: 4px; align-content: start; }  /* 기록이 적어도 줄이 늘어나지 않게 */
+    .events li {
+      --tone: var(--accent);
+      display: grid;
+      grid-template-columns: auto minmax(0, 1fr);
+      column-gap: 10px;
+      padding: 7px 10px 7px 12px;
+      border: 1px solid var(--line);
+      border-radius: 10px;
+      background: var(--surface);
+      box-shadow: inset 3px 0 0 var(--tone);
+      font-variant-numeric: tabular-nums;
+    }
+    .events li time { grid-row: span 2; color: var(--muted); font-size: 11.5px; font-family: ui-monospace, "SF Mono", Consolas, monospace;
+                      padding-top: 1px; }
+    .events li b { font-weight: 650; }
+    .events li b em { font-style: normal; font-size: 11px; font-weight: 700; margin-right: 6px; padding: 0 6px; border-radius: 999px;
+                      color: var(--tone); border: 1px solid var(--tone); }
+    .events li span { display: block; color: var(--muted); font-size: 12px; }
+    .events li[data-tone="warn"] { --tone: var(--warn); }
+    .events li[data-tone="danger"] { --tone: var(--danger); }
+    .events li[data-tone="good"] { --tone: var(--good); }
+    .events li[data-tone="muted"] { --tone: var(--line-strong); }
+    .events li[data-live="true"] { border-color: var(--tone); background: var(--surface-2); }
+    .events li[data-kind="crash"] b, .events li[data-kind="arrival"] b { color: var(--tone); }
+    .events .empty { color: var(--muted); display: block; box-shadow: none; }
+    .note { margin: 0; color: var(--muted); font-size: 12px; }
+    .note code { font-size: 11px; }
+
+    /* 가로로 눕힌 휴대전화처럼 높이가 낮은 화면: 영상 옆에 조이스틱을 둔다 */
+    @media (orientation: landscape) and (max-height: 540px) {
+      .drive { grid-template-columns: minmax(0, 1fr) auto; column-gap: 16px; align-items: center; }
+      .drive { --view-width: min(100%, calc((100dvh - 150px) * var(--aspect, 1.7778))); }
+      .view { justify-self: center; }
+      .stick { --size: 140px; --knob: 54px; }
+      .hint { max-width: 244px; }
+    }
+
+    @media (prefers-reduced-motion: reduce) {
+      .view img, .knob, .flow, .switch .track, .switch .track::after, .goal-arrow { transition: none; }
+      .alert { animation: none; }
+    }
+  </style>
+</head>
+<body>
+  <main class="console">
+    <header class="bar">
+      <h1><img class="logo logo-light" data-brand="mark" src="data:image/png;base64,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" width="26" height="32" alt=""><img class="logo logo-dark" data-brand="mark-dark" src="data:image/png;base64,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" width="26" height="32" alt=""><b translate="no">ReflexGuard</b><span>조작 화면</span></h1>
+      <span class="now" id="now" data-tone="off" title="지금 공유 제어 단계 · 커넥톰 위험도" hidden>—</span>
+      <button class="switch cam-switch" id="cam-switch" type="button" role="switch" aria-checked="false" hidden
+              title="켜면 Webots 시뮬레이션 대신 이 기기의 카메라로 회피 반사를 체험합니다">
+        <span class="switch-label" id="cam-label">휴대폰 카메라</span><span class="track" aria-hidden="true"></span>
+      </button>
+      <span class="badge" id="connectome-badge" hidden>커넥톰 연결 끊김 · 판단 없음</span>
+      <p class="status" id="status" role="status" aria-live="polite" data-state="connecting">Webots에 연결하는 중…</p>
+    </header>
+
+    <div class="drive">
+      <div class="view" id="view" data-stale="false">
+        <img id="frame" width="640" height="360" alt="에이전트의 1인칭 카메라 영상" hidden>
+        <video id="cam" playsinline muted hidden aria-label="이 기기의 카메라 영상"></video>
+        <canvas class="heat" id="heat" aria-hidden="true" hidden></canvas>
+        <button class="heat-toggle" id="heat-toggle" type="button" role="switch" aria-checked="false"
+                title="화면의 어느 칸에서 커넥톰 입력(다가오는 정도)이 높아지는지 영상 위에 겹쳐 보여 줍니다">위험도 겹쳐 보기</button>
+        <p class="heat-legend" id="heat-legend" hidden title="빨강: 칸별 커넥톰 입력(0~1) · 점선: 커지지만 휠체어 통로 밖이라 거른 칸 · 어둡게: 재지 않는 칸">입력 0 <i></i> 1 · <u></u> 통로 밖</p>
+        <p class="placeholder" id="placeholder">카메라 영상이 여기에 표시됩니다.</p>
+      </div>
+      <!-- 지금 동작: 영상을 가리지 않게 영상 바로 아래. 개입·충돌·도착이 있으면 알림, 없으면 '개입 없음' -->
+      <div class="banner" aria-live="polite">
+        <p class="alert" id="alert" hidden><b id="alert-title" role="alert"></b><span id="alert-detail"></span></p>
+        <p class="idle" id="idle"><b id="idle-title">연결을 기다리는 중</b><span id="idle-detail">컨트롤러의 흐름 상태가 오면 지금 동작을 보여 줍니다</span></p>
+      </div>
+      <p class="trip" id="trip" hidden><span class="goal-arrow" id="goal-arrow" aria-hidden="true">↑</span><b id="goal-distance">—</b><span id="trip-detail"></span></p>
+
+      <div class="controls">
+        <div class="joystick">
+          <span class="dir" data-key="W" data-on="false"><b translate="no">W</b><small>전진</small></span>
+          <span class="dir" data-key="A" data-on="false"><b translate="no">A</b><small>좌회전</small></span>
+          <div class="stick" id="stick" data-active="false" role="group"
+               aria-label="조이스틱. 위로 밀면 전진, 아래로 후진, 왼쪽·오른쪽으로 회전. 많이 밀수록 빠르다">
+            <span class="knob" id="knob" data-on="false"></span>
+          </div>
+          <span class="dir" data-key="D" data-on="false"><b translate="no">D</b><small>우회전</small></span>
+          <span class="dir" data-key="S" data-on="false"><b translate="no">S</b><small>후진</small></span>
+        </div>
+        <p class="hint">조이스틱을 마우스로 끌면 민 만큼 움직이고, 놓으면 멈춥니다. 키보드 W A S D도 됩니다.</p>
+      </div>
+
+      <!-- 카메라 체험 설정: '휴대폰 카메라'를 켜면 조이스틱 자리에 -->
+      <section class="cam-box" id="cam-box" aria-label="카메라 체험 설정" hidden>
+        <p class="cam-row"><span>내 움직임</span>
+          <span class="seg" id="cam-speed" role="group" aria-label="내 움직임">
+            <button type="button" data-speed="auto" aria-pressed="true" id="cam-speed-auto"
+                    title="휴대폰 가속도계로 걸음을 세어 서 있는지·얼마나 빨리 걷는지 스스로 정합니다">자동</button>
+            <button type="button" data-speed="0" aria-pressed="false">서 있음</button>
+            <button type="button" data-speed="0.7" aria-pressed="false">천천히 걷기</button>
+            <button type="button" data-speed="1.2" aria-pressed="false">걷기</button>
+          </span>
+        </p>
+        <p class="cam-row sens">
+          <label for="cam-stop">민감도<small id="cam-stop-text">보통 · 위험도 0.30부터</small></label>
+          <span class="range">둔감<input type="range" id="cam-stop" min="15" max="60" step="1" value="30"
+                 aria-describedby="cam-stop-text" title="위험도가 몇부터 정지할지 — 이 휴대폰 체험에만 적용됩니다">민감</span>
+        </p>
+        <p class="cam-row checks">
+          <label><input type="checkbox" id="cam-gyro" checked> 자이로로 회전 보정</label>
+          <label><input type="checkbox" id="cam-flip"> 회전 방향 반대</label>
+          <label><input type="checkbox" id="cam-vibrate" checked> 정지하면 진동</label>
+        </p>
+        <p class="cam-note" id="cam-note">휴대폰을 세로로 가슴 높이에 들고 앞을 비추세요. 처음에 제자리에서 천천히 한 바퀴 돌면 카메라 화각을 스스로 맞춥니다. 서 있으면 정면에서 다가오는 것을, 걸으면 그 속도로 통로를 봅니다.</p>
+        <p class="cam-note error" id="cam-error" hidden></p>
+      </section>
+    </div>
+
+    <aside class="flow" id="flow" data-stale="true" aria-label="회피 반사 흐름">
+      <h2>회피 반사 흐름 <label class="sound" title="앞으로 가려는데 커넥톰이 정지시킬 때만 짧은 경고음 (화면을 한 번 누른 뒤부터 — 브라우저가 그 전에는 소리를 막는다)"><input type="checkbox" id="stop-sound" checked> 정지 소리</label><small id="flow-time" title="시뮬레이션 시각">—</small></h2>
+
+      <ol class="steps">
+        <li class="step" id="step-looming" data-hot="false">
+          <h3>① 루밍 감지 <small id="lo-source">앞 카메라 영상이 커지는 정도</small><em>감지</em></h3>
+          <div class="meter" title="LPLC2 입력 0~1 — 정면 가운데 영역의 왼쪽·오른쪽 절반"><span>왼쪽 다가옴</span><div class="bar-track"><i id="lo-left-bar"></i></div><output id="lo-left">0.00</output></div>
+          <div class="meter" title="LPLC2 입력 0~1 — 정면 가운데 영역의 왼쪽·오른쪽 절반"><span>오른쪽 다가옴</span><div class="bar-track"><i id="lo-right-bar"></i></div><output id="lo-right">0.00</output></div>
+          <p class="kv"><span>부딪히기까지</span><b id="lo-ttc">—</b></p>
+        </li>
+        <li class="arrow" aria-hidden="true">▼ 다가오는 정도 → 초파리 회로</li>
+        <li class="step" id="step-brain" data-hot="false">
+          <h3>② 커넥톰 회피 반사 <small id="br-source" title="LPLC2 185 → DNp01 2 (LIF) · HS 6 → DNa02·DNp15">초파리 커넥톰(MaleCNS) 회로</small><em>위험</em></h3>
+          <div class="meter"><span>위험도</span><div class="bar-track" id="br-escape-track"><i id="br-escape-bar"></i></div><output id="br-escape">0.00</output></div>
+          <div class="meter"><span>왼쪽 회피</span><div class="bar-track"><i id="br-left-bar"></i></div><output id="br-left">0.00</output></div>
+          <div class="meter"><span>오른쪽 회피</span><div class="bar-track"><i id="br-right-bar"></i></div><output id="br-right">0.00</output></div>
+          <div class="meter" title="HS 회로(옆 흐름 → HS → DNa02·DNp15): 옆벽이 가까울수록 커진다"><span>왼쪽 벽 가까움</span><div class="bar-track"><i id="br-near-left-bar"></i></div><output id="br-near-left">0.00</output></div>
+          <div class="meter" title="HS 회로(옆 흐름 → HS → DNa02·DNp15): 옆벽이 가까울수록 커진다"><span>오른쪽 벽 가까움</span><div class="bar-track"><i id="br-near-right-bar"></i></div><output id="br-near-right">0.00</output></div>
+          <p class="kv"><span>판단</span><b class="chip" id="br-signal">위험 없음</b></p>
+          <p class="neurons" id="br-top">반응한 뉴런 없음</p>
+          <p class="neurons" id="cam-cal" hidden></p>
+        </li>
+        <li class="arrow" id="arrow-brain" aria-hidden="true">▼ 위험도·판단</li>
+        <li class="step" id="step-reflex" data-hot="false">
+          <h3>③ 공유 제어 <small title="기획서 표 7 단계 — 커넥톰 출력만으로 정한다">판단대로 감속·회피·정지</small><em>개입</em></h3>
+          <p class="kv"><span>단계</span><b class="chip" id="rf-stage">안전</b></p>
+          <table class="cmd">
+            <thead><tr><th scope="col"></th><th scope="col">전진</th><th scope="col">회전</th></tr></thead>
+            <tbody>
+              <tr><th scope="row">내 입력</th><td id="u-forward">0.00</td><td id="u-turn">0.00</td></tr>
+              <tr><th scope="row">실제 움직임</th><td id="a-forward">0.00</td><td id="a-turn">0.00</td></tr>
+            </tbody>
+          </table>
+        </li>
+      </ol>
+
+    </aside>
+
+    <aside class="side" aria-label="제어와 최근 기록">
+      <h2>제어</h2>
+      <section class="switch-box" aria-label="제어 스위치">
+        <p class="kv switch-row sim-only"><span>맵<small>고르면 그 맵으로 바뀝니다</small></span>
+          <select class="map-select" id="map-select" disabled aria-label="맵 고르기"><option>—</option></select>
+        </p>
+        <p class="kv switch-row sim-only"><span>위험 인식<small>판단·개입은 둘 다 커넥톰</small></span>
+          <span class="seg" id="sensor-buttons" role="group" aria-label="위험 인식 센서">
+            <button type="button" data-sensor="camera" aria-pressed="false" disabled
+                    title="커넥톰이 카메라 영상의 루밍으로 위험 인식과 판단을 다 한다">카메라</button>
+            <button type="button" data-sensor="range" aria-pressed="false" disabled
+                    title="거리 센서가 잰 거리로 같은 꼴의 입력을 만들고, 판단은 커넥톰이 한다">거리 센서</button>
+          </span>
+        </p>
+        <p class="kv switch-row sim-only"><span>커넥톰 연결</span>
+          <button class="switch" id="connectome-switch" data-kind="connectome" type="button" role="switch" aria-checked="true" disabled
+                  title="끄면 커넥톰 판단이 아예 없는 상태가 됩니다. 안전 스위치가 꺼져 있으면 모든 이동을 막습니다">
+            <span class="switch-label">켜짐</span><span class="track" aria-hidden="true"></span>
+          </button>
+        </p>
+        <p class="kv switch-row sim-only"><span>안전 스위치<small>커넥톰이 꺼졌을 때 수동 주행 허용</small></span>
+          <button class="switch" id="safety-switch" data-kind="safety" type="button" role="switch" aria-checked="false" disabled
+                  title="켜면 커넥톰 판단이 없을 때 공유 제어가 막지 않고 사용자 명령 그대로 움직입니다 (보호 없음)">
+            <span class="switch-label">꺼짐</span><span class="track" aria-hidden="true"></span>
+          </button>
+        </p>
+        <p class="mode sim-only" id="mode" data-mode="unknown">—</p>
+        <p class="mode sim-only" id="brain-where" data-mode="unknown">커넥톰 계산: —</p>
+        <p class="mode cam-only" id="cam-where" hidden>이 기기의 카메라 영상을 체험 서버로 보내 휠체어 PC와 같은 파이프라인으로 판단합니다 (영상은 저장하지 않습니다)</p>
+      </section>
+      <h2>최근 기록 <small id="event-count"></small></h2>
+      <ol class="events" id="events"><li class="empty">아직 없습니다.</li></ol>
+      <p class="note" title="요약: python tools/reflex_log_summary.py">전체 기록: <code>logs/reflex_*.jsonl</code></p>
+    </aside>
+  </main>
+
+  <script>
+    'use strict';
+
+    // ----- 화면 파일이 바뀌었으면 스스로 새로고침 -----
+    // Webots는 이 파일을 1시간 동안 저장해 두고 써도 된다고(Cache-Control: max-age=3600) 보낸다. 그래서 화면을 열어 둔 채
+    // Webots를 다시 켜거나 이 파일을 고치면, 화면이 다시 연결은 되지만 예전 코드 그대로 돈다.
+    // Webots에 연결할 때마다 서버에 최신 파일을 물어보고(etag로 확인 — 바뀐 게 없으면 304로 짧게 끝난다),
+    // 지금 돌고 있는 스타일·스크립트가 그 안에 그대로 들어 있지 않으면 파일이 바뀐 것이므로 새로고침한다.
+    // (그냥 HTTP로 파일을 받는 것이라 로봇 창 메시지가 아니다 — Webots가 월드를 여는 중이어도 안전하다)
+    const OWN_SCRIPT = document.currentScript ? document.currentScript.textContent : '';  // 실행 중에만 읽을 수 있다
+    const OWN_STYLE = document.querySelector('style') ? document.querySelector('style').textContent : '';
+    const PAGE_RELOAD_KEY = 'reflexguard-page-reloaded-at';
+    const PAGE_RELOAD_GUARD_MS = 30000;  // 이 시간 안에 이미 한 번 새로고침했으면 되풀이하지 않는다 (비교가 맞지 않는 경우 대비)
+    let pageCheckRunning = false;
+
+    async function reloadIfPageChanged() {
+      if (pageCheckRunning || !location.protocol.startsWith('http') || !OWN_SCRIPT) return;
+      pageCheckRunning = true;
+      try {
+        const response = await fetch(location.href, { cache: 'no-cache' });  // 서버에 확인하고, 브라우저 저장본도 최신으로 바꾼다
+        if (!response.ok) return;
+        const fresh = await response.text();
+        if (fresh.includes(OWN_SCRIPT) && fresh.includes(OWN_STYLE)) return;  // 지금 화면이 최신이다
+        let last = 0;
+        try { last = Number(sessionStorage.getItem(PAGE_RELOAD_KEY)) || 0; } catch (error) { /* 저장소를 못 쓰면 0 */ }
+        if (Date.now() - last < PAGE_RELOAD_GUARD_MS) return;
+        try { sessionStorage.setItem(PAGE_RELOAD_KEY, String(Date.now())); } catch (error) { /* 무시 */ }
+        location.reload();
+      } catch (error) {
+        // Webots를 다시 켜는 중 등으로 받지 못했다: 다음 연결 때 다시 확인한다
+      } finally {
+        pageCheckRunning = false;
+      }
+    }
+
+    // ----- 설정 -----
+    const HEARTBEAT_MS = 200;        // 키를 누르고 있는 동안 눌린 키를 다시 보내는 간격. 이 신호가 끊기면 컨트롤러가 스스로 멈춘다
+    const IDLE_HEARTBEAT_MS = 1000;  // 아무 키도 누르지 않을 때 '화면이 열려 있음'을 알리는 간격. 끊기면 컨트롤러가 영상 전송을 멈춘다
+    const STALE_MS = 2000;           // 이 시간 동안 새 영상이 없으면 '영상을 기다리는 중'으로 표시
+    const RETRY_MS = 2000;           // 연결이 끊겼을 때 다시 시도하는 간격
+    const READY_SIGNALS = 2;         // 컨트롤러의 신호를 이만큼 받은 뒤부터 키를 보낸다 (아래 'Webots 연결' 설명 참고)
+    const KEY_CODES = { KeyW: 'W', KeyA: 'A', KeyS: 'S', KeyD: 'D' };
+    const STICK_DEADZONE = 0.15;     // 조이스틱을 이 비율보다 덜 밀면 그 축은 0 (똑바로 갈 때 손떨림으로 도는 것을 막는다)
+    const STICK_SEND_MS = 50;        // 조이스틱을 끄는 동안 값을 보내는 최소 간격 (포인터가 움직일 때마다 보내지 않게)
+
+    const statusEl = document.getElementById('status');
+    const viewEl = document.getElementById('view');
+    const frameEl = document.getElementById('frame');
+    const placeholderEl = document.getElementById('placeholder');
+    const stickEl = document.getElementById('stick');
+    const knobEl = document.getElementById('knob');
+    const dirs = new Map([...document.querySelectorAll('.dir')].map(el => [el.dataset.key, el]));
+
+    // ----- Webots 연결 -----
+    // 이 페이지는 http://<주소>/robot_windows/reflexguard/reflexguard.html?name=<로봇 이름> 으로 열린다.
+    // 같은 주소의 맨 위("/")가 Webots의 웹소켓이다 (Webots가 제공하는 RobotWindow.js와 같은 규칙).
+    const robotName = new URLSearchParams(location.search).get('name') || 'reflexguard';
+    // 이 화면(탭)의 이름. 화면이 여러 개 열려 있어도 컨트롤러가 누가 어떤 키를 누르는지 구분할 수 있게 한다
+    // 화면·세션 이름은 예측할 수 없는 난수로 (Math.random 대신 — KISA 구현 2-8). getRandomValues는 http에서도 된다.
+    const randomId = bytes => Array.from(crypto.getRandomValues(new Uint8Array(bytes)), b => b.toString(16).padStart(2, '0')).join('');
+    const screenName = randomId(4);
+    // 파일을 직접 열었거나(file://) 다른 경로로 열었으면 연결할 곳이 없다 → 안내만 띄운다
+    const cut = location.protocol.startsWith('http') ? location.href.indexOf('/robot_windows/') : -1;
+    const socketUrl = cut < 0 ? null : location.href.slice(0, cut + 1).replace(/^http/, 'ws');
+    //
+    // 주의: Webots(R2025a)는 월드를 다 열기 전에 로봇 창 메시지("robot:…")를 받으면 비정상 종료한다.
+    // 이 화면을 열어 둔 채 Webots를 다시 켜면 딱 그 상황이 되므로, 컨트롤러가 돌고 있다는 것을
+    // 확인한 뒤에만 키를 보낸다. 컨트롤러는 0.5초마다 "ready" 신호를 보내고, 화면이 열려 있으면 영상도 보낸다.
+    // 접속하자마자 받는 첫 신호는 예전에 Webots 안에 쌓여 있던 것일 수 있어서, 두 번째 신호부터 믿는다.
+    // ("init robot window"만은 언제 보내도 안전하다.)
+    let socket = null;
+    let controllerSignals = 0;  // 이번 연결에서(그리고 월드를 다시 연 뒤로) 컨트롤러의 신호를 받은 횟수
+    let lastFrameAt = 0;        // 마지막으로 영상을 받은 시각(ms). 연결 직후에는 연결된 시각
+
+    function controllerReady() {
+      return controllerSignals >= READY_SIGNALS;
+    }
+
+    function setStatus(state, text) {
+      if (statusEl.dataset.state === state && statusEl.textContent === text) return;
+      statusEl.dataset.state = state;
+      statusEl.textContent = text;
+    }
+
+    function sendToController(message) {
+      if (socket && socket.readyState === WebSocket.OPEN) socket.send('robot:' + robotName + ':' + message);
+    }
+
+    let mode = 'sim';  // 'sim' = Webots 시뮬레이션, 'camera' = 이 기기의 카메라 (아래 '카메라 체험')
+
+    function connect() {
+      if (mode !== 'sim' || socket) return;
+      if (!socketUrl) {
+        setStatus('offline', '이 화면은 Webots를 켠 뒤 Webots 콘솔에 나오는 주소(http://localhost:1234/robot_windows/…)로 열어야 합니다.');
+        return;
+      }
+      setStatus('connecting', 'Webots에 연결하는 중…');
+      socket = new WebSocket(socketUrl);
+      socket.onopen = () => {
+        reloadIfPageChanged();  // Webots를 다시 켰거나 화면 파일을 고쳤으면 새 화면으로
+        controllerSignals = 0;
+        sendToController('init robot window');  // Webots가 이 창을 로봇 창으로 등록하게 하는 약속된 첫 메시지
+        lastFrameAt = performance.now();  // 이때부터 STALE_MS 안에 영상이 오지 않으면 안내를 띄운다 (예: 시뮬레이션이 일시정지 상태)
+        setStatus('waiting', '연결됨. 영상을 기다리는 중…');
+      };
+      socket.onmessage = event => {
+        const text = String(event.data);
+        // Webots가 월드를 닫거나 여는 중이라는 알림: 다시 컨트롤러의 신호가 올 때까지 아무것도 보내지 않는다
+        if (text === 'delete world' || text.startsWith('loading:')) {
+          controllerSignals = 0;
+          lastFrameAt = performance.now();
+          viewEl.dataset.stale = 'true';
+          setStatus('waiting', 'Webots가 월드를 여는 중…');
+          return;
+        }
+        // 여러 메시지가 줄바꿈으로 묶여 올 수 있다. 영상·흐름 상태는 마지막 것만, 반사 사건은 전부 순서대로 처리한다.
+        let fromController = false;
+        let latestFrame = null;
+        let latestCells = null;
+        let latestState = null;
+        const reflexEvents = [];
+        const collisionEvents = [];
+        for (const line of text.split(/\r?\n/)) {
+          if (!line.startsWith('robot:')) continue;  // 로그 등 다른 종류의 메시지는 건너뛴다
+          let packet;
+          try { packet = JSON.parse(line.slice(line.indexOf('{'))); } catch (error) { continue; }
+          if (packet.name !== robotName || typeof packet.message !== 'string') continue;
+          fromController = true;
+          if (packet.message.startsWith('frame:')) latestFrame = packet.message.slice(6);
+          else if (packet.message.startsWith('cells:')) latestCells = packet.message.slice(6);
+          else if (packet.message.startsWith('state:')) latestState = packet.message.slice(6);
+          else if (packet.message.startsWith('reflex:')) reflexEvents.push(packet.message.slice(7));
+          else if (packet.message.startsWith('collision:')) collisionEvents.push(packet.message.slice(10));
+        }
+        if (!fromController) return;
+        const wasReady = controllerReady();
+        controllerSignals++;
+        if (!controllerReady()) return;
+        if (!wasReady && !document.hidden) sendKeys();  // 이 화면이 열려 있음을 알린다 → 컨트롤러가 영상을 보내기 시작한다
+        if (latestCells !== null) heat.cells = parseJson(latestCells);
+        if (latestFrame !== null) showFrame(latestFrame);
+        for (const text of reflexEvents) handleReflexEvent(parseJson(text));
+        for (const text of collisionEvents) handleCollisionEvent(parseJson(text));
+        if (latestState !== null) showState(parseJson(latestState));
+      };
+      socket.onclose = () => {
+        socket = null;
+        if (mode !== 'sim') return;  // 카메라 체험으로 바꾸느라 닫았다
+        if (!camSwitch.hidden) checkPortalLogin();  // 포털로 연 화면: 로그인이 끝나 끊긴 것이면 로그인 화면으로
+        controllerSignals = 0;
+        releaseAll();
+        sendKeys();  // 화면의 키 표시를 '안 눌림'으로 되돌린다 (연결이 없으므로 실제 전송은 되지 않는다)
+        viewEl.dataset.stale = 'true';
+        flowEl.dataset.stale = 'true';
+        clearCrash();
+        hideAlert();
+        connectomeSwitch.wanted = safetySwitch.wanted = null;
+        showSwitches(null, null);  // 연결이 없으면 실제 상태를 모른다 → 스위치를 쓸 수 없게
+        showMaps(null, null);
+        showSensor(null);
+        showBrainWhere(null);
+        showTrip(null);
+        byId('now').hidden = true;  // 연결이 없으면 지금 단계를 모른다
+        byId('idle-title').textContent = '연결이 끊겼습니다';
+        byId('idle-detail').textContent = '다시 연결되면 지금 동작을 보여 줍니다';
+        byId('idle').dataset.tone = 'off';
+        lastSwitches = null;        // 다시 연결된 뒤 첫 상태는 '바뀜'으로 기록하지 않는다
+        setStatus('offline', '연결이 끊겼습니다. Webots가 켜져 있는지 확인하세요. 자동으로 다시 연결합니다.');
+        setTimeout(connect, RETRY_MS);
+      };
+    }
+
+    // ----- 위험도 겹쳐 보기 (켜고 끄기는 이 화면에만 — 컨트롤러는 영상마다 'cells:'를 함께 보낸다) -----
+    // 칸마다 커넥톰이 받는 LPLC2 입력(루밍 ÷ looming_norm, 0~1)을 빨간색 진하기로. 영상 전체를 같은 격자로 고르게 나눈 칸이다.
+    // 커지고는 있지만 휠체어 통로(옆 몸 폭, 위 머리 높이) 밖이라 커넥톰에 넘기지 않은 칸은 점선 테두리로.
+    // 재지 않는 칸(looming_cell_*로 자른 칸 — 기본은 자르지 않음)은 어둡게 덮는다. 0.15가 넘는 칸에는 값을 적는다.
+    const heat = { on: false, cells: null };
+    const heatEl = document.getElementById('heat'), heatToggle = document.getElementById('heat-toggle'),
+          heatLegend = document.getElementById('heat-legend');
+    function setHeat(on) {
+      heat.on = on;
+      heatToggle.setAttribute('aria-checked', String(on));
+      heatToggle.textContent = on ? '위험도 겹쳐 보기 켜짐' : '위험도 겹쳐 보기';
+      heatEl.hidden = heatLegend.hidden = !on;
+      try { localStorage.setItem('reflexguard-heat', on ? '1' : '0'); } catch (error) { /* 저장 못 해도 이번 화면에서는 동작 */ }
+      drawHeat();
+    }
+    heatToggle.addEventListener('click', () => setHeat(!heat.on));
+    function drawHeat() {
+      if (!heat.on) return;
+      const rect = heatEl.getBoundingClientRect();
+      const scale = window.devicePixelRatio || 1;
+      const width = Math.max(1, Math.round(rect.width * scale)), height = Math.max(1, Math.round(rect.height * scale));
+      if (heatEl.width !== width || heatEl.height !== height) { heatEl.width = width; heatEl.height = height; }
+      const ctx = heatEl.getContext('2d');
+      ctx.clearRect(0, 0, width, height);
+      const data = heat.cells;
+      if (!data || !data.rows || !Array.isArray(data.input)) return;
+      const cw = width / data.cols, ch = height / data.rows;
+      ctx.font = `${Math.round(11 * scale)}px system-ui, sans-serif`;
+      ctx.textAlign = 'center';
+      ctx.textBaseline = 'middle';
+      for (let r = 0; r < data.rows; r++) {
+        for (let c = 0; c < data.cols; c++) {
+          const i = r * data.cols + c, x = c * cw, y = r * ch;
+          if (data.measured && !data.measured[i]) {
+            ctx.fillStyle = 'rgba(0, 0, 0, 0.32)';
+            ctx.fillRect(x, y, cw, ch);
+            continue;
+          }
+          const v = Math.max(0, Math.min(1, Number(data.input[i]) || 0));
+          if (v > 0.02) {
+            ctx.fillStyle = `rgba(255, 90, 60, ${(0.08 + 0.67 * v).toFixed(3)})`;
+            ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+          } else if (data.filtered && data.filtered[i]) {  // 커지고는 있지만 휠체어 통로 밖이라 거른 칸
+            ctx.setLineDash([4 * scale, 3 * scale]);
+            ctx.strokeStyle = 'rgba(220, 225, 232, 0.85)';
+            ctx.lineWidth = 1.5 * scale;
+            ctx.strokeRect(x + 3 * scale, y + 3 * scale, cw - 6 * scale, ch - 6 * scale);
+            ctx.setLineDash([]);
+          }
+          if (v >= 0.15) {
+            ctx.fillStyle = 'rgba(255, 255, 255, 0.95)';
+            ctx.fillText(v.toFixed(2), x + cw / 2, y + ch / 2);
+          }
+        }
+      }
+      ctx.strokeStyle = 'rgba(255, 255, 255, 0.12)';  // 칸 경계
+      ctx.lineWidth = 1;
+      ctx.beginPath();
+      for (let c = 1; c < data.cols; c++) { ctx.moveTo(Math.round(c * cw) + 0.5, 0); ctx.lineTo(Math.round(c * cw) + 0.5, height); }
+      for (let r = 1; r < data.rows; r++) { ctx.moveTo(0, Math.round(r * ch) + 0.5); ctx.lineTo(width, Math.round(r * ch) + 0.5); }
+      ctx.stroke();
+    }
+    window.addEventListener('resize', drawHeat);
+    // 주소에 heat=1(켜기)·heat=0(끄기)을 붙이면 그대로, 없으면 이 브라우저가 기억한 대로
+    const heatParam = new URLSearchParams(location.search).get('heat');
+    if (heatParam === '1' || heatParam === '0') setHeat(heatParam === '1');
+    else try { if (localStorage.getItem('reflexguard-heat') === '1') setHeat(true); } catch (error) { /* 저장소를 못 쓰면 꺼진 채로 */ }
+
+    function showFrame(base64Jpeg) {
+      frameEl.src = 'data:image/jpeg;base64,' + base64Jpeg;
+      drawHeat();
+      frameEl.hidden = false;
+      placeholderEl.hidden = true;
+      viewEl.dataset.stale = 'false';
+      lastFrameAt = performance.now();
+      setStatus('live', '연결됨');
+    }
+
+    // ----- 카메라 체험 ('휴대폰 카메라' 스위치) -----
+    // 체험·조작 포털(demo/server.py)로 열었을 때만 쓸 수 있다(GET /api/portal). 켜면 Webots 연결을 닫고, 이 기기의 카메라 영상을
+    // 줄인 밝기 영상(긴 쪽 240 px)으로 POST /api/frame에 보낸다. 답(흐름 상태·칸별 입력·작동 사건)은 시뮬레이션 때와 같은
+    // 함수(showState·drawHeat·handleReflexEvent)로 그린다. 고른 모드는 이 브라우저에 기억한다.
+    // 보내는 밝기 영상의 긴 쪽(px). 세로로 들어도 가로가 아니라 긴 쪽을 맞춘다 — 가로 240으로 맞추면 세로 영상이 426 px라 서버가
+    // 휠체어 카메라(213×120)의 네 배 화소를 계산했다 (한 장 100 ms 넘게, 초당 4장). 각도당 화소도 가로로 들 때와 같아진다
+    const CAM_SEND_LONG = 240;
+    // 휴대폰 카메라의 긴 쪽 화각(도) — 처음 값. 브라우저로는 화각을 알 수 없어, 서버가 영상 모양(가로·세로)으로 가로 화각을 셈하고
+    // 정확한 값은 카메라 자기 보정이 제자리에서 돌 때(자이로) 맞춘다 (wheelchair/looming/calibration.py)
+    const PHONE_FOV_DEG = 70;
+    const CAM_MIN_INTERVAL_MS = 66;  // 초당 15장까지
+    // 답을 기다리지 않고 이만큼까지 겹쳐 보낸다 — 한 장씩 주고받으면 보내는 시간(와이파이)과 서버 계산 시간이 그대로 더해졌다.
+    // 장마다 찍은 시각과 돈 각도 합을 함께 보내, 서버가 앞서 처리한 장과의 차이로 장 사이 시간·회전을 셈한다 (순서가 바뀌어도 맞다)
+    const CAM_MAX_INFLIGHT = 2;
+    const MODE_KEY = 'reflexguard-mode';
+    const camEl = document.getElementById('cam');
+    const camSwitch = document.getElementById('cam-switch');
+    const camGrab = document.createElement('canvas');
+    const camGrabCtx = camGrab.getContext('2d', { willReadFrequently: true });
+    const camSession = randomId(16);  // 128비트
+    // rates: 자이로 기록 [[시각 ms, 좌우(+오른쪽), 숙임(+아래), 기울기(+시계 방향)] 도/초] — 장과 장 사이(찍은 시각 기준)만큼 적분한다.
+    // shotAt: 마지막으로 보낸 장을 카메라가 찍은 시각(ms) — 장 사이 시간을 '보낸 시각'이 아니라 '찍은 시각'으로 잰다
+    // total: 카메라를 켠 뒤 찍은 장들 사이에 돈 각도 합 [좌우, 숙임, 기울기] (도), shown: 화면에 그린 마지막 답의 장 번호
+    const cam = { running: false, speed: 0, speedAuto: true, rates: [], shotAt: 0, sentAt: 0, total: [0, 0, 0], shown: 0, frames: [],
+                  lastStop: false, stream: null,
+                  pitch: null };  // pitch: 기울기 센서로 잰 카메라 숙인 각(도, +아래) — 없으면 보내지 않는다
+    const RATE_KEEP_MS = 3000;  // 자이로 기록을 이만큼만 둔다
+    const touchDevice = matchMedia('(pointer: coarse)').matches;
+    document.getElementById('cam-label').textContent = touchDevice ? '휴대폰 카메라' : '이 기기 카메라';  // (byId는 아래에서 정의)
+
+    let portalCsrf = '';
+    let camOnly = false;  // Webots 없이 켠 카메라 체험 전용 포털 — 시뮬레이션으로 넘어갈 곳이 없다  // 포털이 준 CSRF 값 — 카메라 영상(POST /api/frame)에 싣는다
+    function checkPortalLogin() {  // 포털이 401(로그인 필요)이면 다시 불러 로그인 화면을 받는다
+      fetch('/api/portal', { cache: 'no-store' }).then(r => { if (r.status === 401) location.reload(); }).catch(() => {});
+    }
+
+    async function initPortal() {  // 포털이면 스위치를 보이고, 기억해 둔 모드(없으면: Webots가 없을 때만 카메라)로 시작
+      let portal = null;
+      try {
+        const response = await fetch('/api/portal', { cache: 'no-store' });
+        if (response.status === 401) { location.reload(); return; }
+        portal = response.ok ? await response.json() : null;
+        portalCsrf = (portal && portal.csrf) || '';
+      } catch (error) { portal = null; }
+      if (!portal || !portal.camera) { connect(); return; }  // Webots가 직접 연 화면 — 시뮬레이션만
+      camSwitch.hidden = false;
+      let saved = null;
+      try { saved = localStorage.getItem(MODE_KEY); } catch (error) { /* 저장소를 못 쓰면 기억 없이 */ }
+      const noSim = !portal.webots || !portal.webots.port;
+      if (noSim) {  // 카메라 체험 전용 포털 (run.sh --no-webots · run_demo.sh) — 시뮬레이션으로 바꿀 곳이 없다
+        camOnly = true;
+        camSwitch.hidden = true;
+        setMode('camera', false);
+      } else if (saved === 'camera') setMode('camera', false);
+      else connect();
+    }
+
+    async function setMode(next, fromClick = true) {
+      if (next === mode) return;
+      mode = next;
+      document.body.dataset.mode = next;
+      camSwitch.setAttribute('aria-checked', String(next === 'camera'));
+      try { localStorage.setItem(MODE_KEY, next); } catch (error) { /* 무시 */ }
+      // 두 모드는 같은 패널을 쓴다 → 앞 모드의 알림·상태를 지우고 새로 받는다
+      hideAlert(); clearCrash(); lastSwitches = null; heat.cells = null; drawHeat();
+      byId('now').hidden = true;
+      byId('cam-box').hidden = next !== 'camera';
+      byId('cam-where').hidden = next !== 'camera';
+      byId('idle-title').textContent = next === 'camera' ? '카메라를 여는 중' : '연결을 기다리는 중';
+      byId('idle-detail').textContent = next === 'camera' ? '카메라 영상이 오면 지금 판단을 보여 줍니다'
+        : 'Webots 컨트롤러의 흐름 상태가 오면 지금 동작을 보여 줍니다';
+      byId('idle').dataset.tone = 'off';
+      setLog(logItem('switch', 'muted'), nowClock(), '모드', next === 'camera' ? `${byId('cam-label').textContent} 켬` : '시뮬레이션으로',
+        next === 'camera' ? 'Webots 대신 이 기기의 카메라로 체험합니다' : 'Webots 시뮬레이션을 조작합니다');
+      if (next === 'camera') {
+        releaseAll(); sendKeys();  // 시뮬레이션의 로봇은 멈춘다 (키를 모두 뗀 것으로 보낸 뒤 닫는다)
+        if (socket) { const closing = socket; socket = null; closing.close(); }
+        controllerSignals = 0;
+        frameEl.hidden = true;
+        if (!heat.on) setHeat(true);  // 카메라 체험은 칸별 위험도를 겹쳐 보는 것이 핵심
+        await startCamera(fromClick);
+      } else {
+        stopCamera();
+        camEl.hidden = true;
+        placeholderEl.hidden = false;  // 첫 시뮬레이션 영상이 오면 사라진다
+        connect();
+      }
+    }
+    camSwitch.addEventListener('click', () => setMode(mode === 'camera' ? 'sim' : 'camera'));
+
+    async function startCamera(fromClick) {
+      byId('cam-error').hidden = true;
+      setStatus('connecting', '카메라를 여는 중…');
+      try {
+        // 아이폰은 자이로를 쓰려면 사용자가 누른 순간에 허락을 받아야 한다 (거절해도 자이로 없이 한다)
+        if (fromClick && window.DeviceMotionEvent && typeof DeviceMotionEvent.requestPermission === 'function') {
+          try { await DeviceMotionEvent.requestPermission(); } catch (error) { /* 무시 */ }
+        }
+        if (fromClick && window.DeviceOrientationEvent && typeof DeviceOrientationEvent.requestPermission === 'function') {
+          try { await DeviceOrientationEvent.requestPermission(); } catch (error) { /* 무시 — 숙인 각 없이 한다 */ }
+        }
+        window.addEventListener('devicemotion', onMotion);
+        window.addEventListener('deviceorientation', onOrientation);
+        cam.stream = await navigator.mediaDevices.getUserMedia({
+          audio: false, video: { facingMode: { ideal: 'environment' }, width: { ideal: 640 }, height: { ideal: 480 } } });
+        if (mode !== 'camera') { stopCamera(); return; }  // 여는 사이 다시 껐다
+        camEl.srcObject = cam.stream;
+        await camEl.play();
+        camEl.hidden = false;
+        placeholderEl.hidden = true;
+        cam.running = true;
+        cam.shotAt = 0;
+        cam.rates = [];
+        cam.total = [0, 0, 0];
+        camLoop();
+      } catch (error) {
+        const why = !window.isSecureContext
+          ? '이 주소는 HTTPS가 아니라 브라우저가 카메라를 열어 주지 않습니다. 휴대폰에서는 https://<이 PC 주소>:8443 으로 여세요.'
+          : '카메라를 열지 못했습니다: ' + (error && error.message || error) + ' — 브라우저의 카메라 권한을 확인하세요.';
+        byId('cam-error').textContent = why;
+        byId('cam-error').hidden = false;
+        setStatus('offline', '카메라를 쓸 수 없습니다');
+        if (!fromClick && !camOnly) setMode('sim', false);  // 자동으로 켜려다 실패: 시뮬레이션으로 (사용자가 누른 것이면 안내를 남겨 둔다)
+      }
+    }
+    function stopCamera() {
+      cam.running = false;
+      window.removeEventListener('devicemotion', onMotion);
+      window.removeEventListener('deviceorientation', onOrientation);
+      cam.pitch = null;
+      if (cam.stream) cam.stream.getTracks().forEach(track => track.stop());
+      cam.stream = null;
+      camEl.srcObject = null;
+    }
+
+    // 자이로: 직전 영상 이후 몸이 돈 각도(도). 기기 축(x 화면 오른쪽, y 화면 위, z 화면에서 나를 향함)의 오른손 회전 속도
+    // alpha(z)·beta(x)·gamma(y)를 우리 약속으로: 좌우 turn(+오른쪽), 숙임 nod(+뒤 카메라가 아래로), 기울기 roll(+뒤에서 볼 때 시계 방향).
+    // 세로로 들면 좌우는 y축, 숙임은 x축 / 가로로 들면 좌우는 x축, 숙임은 y축(돌린 방향에 따라 부호). 기울기는 늘 z축.
+    // 걸으며 들면 걸음마다 숙였다 들고 좌우로 기우는데, 그것까지 알려 주면 영상으로 재는 것보다 정확하다
+    // ----- 걸음으로 속도 정하기 ('내 움직임: 자동') -----
+    // 휴대폰에는 바퀴가 없어 앞으로 가는 속도를 모른다. 걸으면 몸이 걸음마다 한 번씩 위아래로 출렁여 가속도 크기가 오르내린다 →
+    // 최근 WALK_WINDOW_S초의 출렁임 세기(표준편차)와 박자(걸음 수/초)로: 세기가 작거나 박자가 걸음 같지 않으면 서 있음(0),
+    // 걸으면 속도 = 보폭 × 걸음 수 (WALK_STEP_M — 보통 0.6~0.7 m). 가속도계가 없거나 권한이 없으면 서 있음으로 둔다.
+    const WALK_WINDOW_S = 2.5, WALK_STEP_M = 0.65, WALK_MIN_SWAY = 0.6;      // 초, m, m/s² (출렁임 세기가 이보다 작으면 서 있음)
+    const WALK_CADENCE = [1.0, 3.2];                                          // 걸음 수/초 — 이 밖이면 걸음이 아니다 (손떨림·차 진동)
+    const walk = { samples: [], base: null, smooth: 0, lastAt: 0, speed: 0, seen: false };
+    function estimateWalk(samples) {  // [[초, 가속도 크기−중력 평균], …] → 속도(m/s, 0 = 서 있음)와 걸음 수/초
+      if (samples.length < 20) return { speed: 0, cadence: 0, sway: 0 };
+      const values = samples.map(s => s[1]);
+      const mean = values.reduce((a, b) => a + b, 0) / values.length;
+      const sway = Math.sqrt(values.reduce((a, b) => a + (b - mean) ** 2, 0) / values.length);
+      const ups = [];  // 위로 지나가는 때 (출렁임 세기의 0.3배 문턱으로 잔떨림은 세지 않는다)
+      let below = true;
+      samples.forEach(([t, v]) => {
+        if (below && v - mean > 0.3 * sway) { ups.push(t); below = false; } else if (!below && v - mean < -0.3 * sway) below = true;
+      });
+      // 걸음 수/초 = 첫 걸음과 마지막 걸음 사이의 걸음 수 ÷ 그 시간 (창 끝에서 걸음을 하나 더 세지 않게)
+      const cadence = ups.length >= 2 ? (ups.length - 1) / Math.max(ups[ups.length - 1] - ups[0], 1e-3) : 0;
+      const walking = sway >= WALK_MIN_SWAY && cadence >= WALK_CADENCE[0] && cadence <= WALK_CADENCE[1];
+      return { speed: walking ? Math.min(1.8, WALK_STEP_M * cadence) : 0, cadence, sway };
+    }
+    function onWalkSample(event, now) {
+      const a = event.accelerationIncludingGravity;
+      if (!a || a.x === null || a.x === undefined) return;
+      walk.seen = true;
+      const magnitude = Math.hypot(a.x || 0, a.y || 0, a.z || 0);
+      walk.base = walk.base === null ? magnitude : walk.base + 0.02 * (magnitude - walk.base);  // 중력·기울기 (천천히)
+      walk.smooth += 0.35 * (magnitude - walk.base - walk.smooth);                               // 잔떨림 덜기
+      const t = now / 1000;
+      walk.samples.push([t, walk.smooth]);
+      while (walk.samples.length && walk.samples[0][0] < t - WALK_WINDOW_S) walk.samples.shift();
+      if (now - walk.lastAt < 250) return;
+      walk.lastAt = now;
+      const estimate = estimateWalk(walk.samples);
+      // 걷기 시작은 천천히(헛것 줄이기), 멈춤은 빨리 따라간다
+      walk.speed += (estimate.speed > walk.speed ? 0.35 : 0.6) * (estimate.speed - walk.speed);
+      if (walk.speed < 0.15) walk.speed = 0;
+      if (cam.speedAuto) {
+        cam.speed = Math.round(walk.speed * 10) / 10;
+        byId('cam-speed-auto').textContent = cam.speed > 0 ? `자동 · 걷기 ${cam.speed.toFixed(1)} m/s` : '자동 · 서 있음';
+      }
+    }
+
+    function onMotion(event) {
+      const rate = event.rotationRate, now = performance.now();
+      onWalkSample(event, now);
+      if (!rate) return;
+      const angle = (window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
+      const alpha = rate.alpha || 0, beta = rate.beta || 0, gamma = rate.gamma || 0;
+      let yaw, nod;
+      if (angle === 90) { yaw = -beta; nod = -gamma; }
+      else if (angle === -90 || angle === 270) { yaw = beta; nod = gamma; }
+      else { yaw = gamma; nod = -beta; }
+      let roll = -alpha;
+      if (byId('cam-flip').checked) { yaw = -yaw; nod = -nod; roll = -roll; }  // '회전 방향 반대': 부호가 거꾸로 나오는 기기 — 세 축 모두
+      cam.rates.push([now, -yaw, nod, roll]);  // 좌우: 왼쪽으로 돌면 +로 나온다 → 우리 약속(+오른쪽)으로 뒤집는다
+      while (cam.rates.length && now - cam.rates[0][0] > RATE_KEEP_MS) cam.rates.shift();
+    }
+    // from~to(ms) 사이에 돈 각도 [좌우, 숙임, 기울기] — 자이로 값은 다음 기록까지 그대로라고 보고 겹치는 시간만큼 더한다
+    function rotationBetween(from, to) {
+      const out = [0, 0, 0];
+      for (let i = 0; i < cam.rates.length; i++) {
+        const start = cam.rates[i][0], end = i + 1 < cam.rates.length ? cam.rates[i + 1][0] : Math.max(start, to);
+        const overlap = (Math.min(end, to) - Math.max(start, from)) / 1000;
+        if (overlap > 0) for (let k = 0; k < 3; k++) out[k] += cam.rates[i][k + 1] * overlap;
+      }
+      return out;
+    }
+    // 다음 새 장을 기다려 그 장을 카메라가 찍은 시각(ms, performance.now 기준)을 돌려준다. 화면이 66 ms마다 <video>의 최근 장을
+    // 집으면 카메라 장(초당 30장 안팎, 어두우면 더 적다)과 어긋나 장 사이 시간이 실제와 ±16 ms 틀리고 같은 장을 두 번 보내기도
+    // 했다 — 루밍은 장 사이 시간으로 빠르기를 잰다. 찍은 시각이 없는 브라우저는 보이는 시각, 그것도 없으면 지금
+    function nextShot() {
+      if (!camEl.requestVideoFrameCallback) return Promise.resolve(performance.now());
+      return new Promise(resolve => camEl.requestVideoFrameCallback((now, meta) =>
+        resolve(meta.captureTime ?? meta.expectedDisplayTime ?? now)));
+    }
+
+    // 기울기 센서: 뒤 카메라가 수평보다 몇 도 아래를 보는지. 세로로 들면 beta 90 = 똑바로 세움(수평), 0 = 화면이 하늘(바닥을 봄),
+    // 가로로 들면 gamma ±90 = 세움 → 숙인 각 = 90 - beta (가로: 90 - |gamma|). 손떨림은 천천히 따라간다
+    function onOrientation(event) {
+      if (event.beta === null || event.beta === undefined) return;
+      const angle = (window.screen.orientation && window.screen.orientation.angle) || window.orientation || 0;
+      const landscape = angle === 90 || angle === -90 || angle === 270;
+      const tilt = landscape ? 90 - Math.abs(event.gamma || 0) : 90 - event.beta;
+      if (!Number.isFinite(tilt)) return;
+      cam.pitch = cam.pitch === null ? tilt : cam.pitch + 0.2 * (tilt - cam.pitch);
+    }
+
+    async function camLoop() {
+      const inflight = [];  // 답을 기다리는 장들 (보낸 차례)
+      let seq = 0;
+      cam.shown = 0;
+      while (cam.running) {
+        const wait = CAM_MIN_INTERVAL_MS - (performance.now() - cam.sentAt);
+        if (wait > 0) await new Promise(resolve => setTimeout(resolve, wait));
+        if (!cam.running) break;
+        if (!camEl.videoWidth) { await new Promise(resolve => setTimeout(resolve, 100)); continue; }
+        const shotAt = await nextShot();
+        if (!cam.running) break;
+        if (cam.shotAt && shotAt <= cam.shotAt) continue;  // 이미 보낸 장
+        viewEl.parentElement.style.setProperty('--aspect', String(camEl.videoWidth / camEl.videoHeight));
+        const scale = CAM_SEND_LONG / Math.max(camEl.videoWidth, camEl.videoHeight);
+        const width = Math.round(camEl.videoWidth * scale), height = Math.round(camEl.videoHeight * scale);
+        camGrab.width = width; camGrab.height = height;
+        camGrabCtx.drawImage(camEl, 0, 0, width, height);
+        const rgba = camGrabCtx.getImageData(0, 0, width, height).data;
+        const gray = new Uint8Array(width * height);
+        for (let i = 0, j = 0; i < gray.length; i++, j += 4) gray[i] = (rgba[j] * 299 + rgba[j + 1] * 587 + rgba[j + 2] * 114) / 1000;
+        const now = performance.now();
+        const first = !cam.shotAt;
+        const dt = first ? CAM_MIN_INTERVAL_MS / 1000 : Math.min((shotAt - cam.shotAt) / 1000, 1);
+        const gyro = byId('cam-gyro').checked;
+        const [turn, nod, roll] = gyro && !first ? rotationBetween(cam.shotAt, shotAt) : [0, 0, 0];  // 찍은 두 시각 사이에 돈 만큼
+        cam.total = [cam.total[0] + turn, cam.total[1] + nod, cam.total[2] + roll];
+        cam.shotAt = shotAt;
+        cam.sentAt = now;
+        const query = new URLSearchParams({ session: camSession, dt: dt.toFixed(4), turn: turn.toFixed(3),
+                                            nod: nod.toFixed(3), roll: roll.toFixed(3),
+                                            at: shotAt.toFixed(1), total: cam.total.map(v => v.toFixed(3)).join(','),
+                                            speed: String(cam.speed), fov: String(PHONE_FOV_DEG) });
+        if (first) query.set('first', '1');
+        query.set('stop', (Number(stopEl.value) / 100).toFixed(2));  // 민감도 슬라이더의 정지 기준
+        if (cam.speedAuto) query.set('auto', '1');  // 속도를 카메라로 짐작 (잴 수 없으면 speed — 걸음 수로 정한 값)
+        if (byId('cam-gyro').checked && cam.pitch !== null) query.set('pitch', String(Math.round(Math.min(45, Math.max(-30, cam.pitch)))));
+        inflight.push(sendFrame(query, gray, width, height, ++seq, now));
+        if (inflight.length >= CAM_MAX_INFLIGHT && await inflight.shift() === 'stop') break;
+      }
+    }
+    // 한 장 보내고 답을 그린다. 'stop'이면 카메라 고리를 멈춘다. 늦게 온 답(더 나중 장의 답을 이미 그렸다)·버려진 장(409)은 그리지 않는다
+    async function sendFrame(query, gray, width, height, id, sentAt) {
+      try {
+        const response = await fetch('/api/frame?' + query, { method: 'POST', body: gray,
+          headers: { 'Content-Type': 'application/octet-stream', 'X-Width': String(width), 'X-Height': String(height),
+                     'X-CSRF-Token': portalCsrf } });
+        if (response.status === 401) { location.reload(); return 'stop'; }  // 로그인이 끝났다 → 로그인 화면
+        const reply = await response.json();
+        if (!cam.running) return 'stop';
+        if (response.status === 503) {
+          byId('cam-error').textContent = '지금 카메라로 체험하는 기기가 많습니다. 잠시 뒤 다시 켜세요.' +
+            (camOnly ? ' (이 화면을 새로고침하면 다시 시도합니다)' : '');
+          byId('cam-error').hidden = false;
+          if (camOnly) { stopCamera(); setStatus('offline', '자리가 없습니다'); } else setMode('sim', false);
+          return 'stop';
+        }
+        if (!response.ok || !reply.state || id < cam.shown) return 'ok';
+        cam.shown = id;
+        showCameraReply(reply, performance.now() - sentAt);
+      } catch (error) {
+        setStatus('offline', '체험 서버와 연결이 끊겼습니다. 같은 와이파이인지, 서버가 켜져 있는지 확인하세요.');
+        await new Promise(resolve => setTimeout(resolve, 1000));
+      }
+      return 'ok';
+    }
+    function showCameraReply(reply, roundTripMs) {
+      heat.cells = reply.cells;
+      drawHeat();
+      for (const event of reply.events || []) handleReflexEvent(event);
+      showState(reply.state);
+      viewEl.dataset.stale = 'false';
+      lastFrameAt = performance.now();
+      const now = performance.now();
+      cam.frames = cam.frames.filter(t => now - t < 2000);
+      cam.frames.push(now);
+      setStatus('live', `${byId('cam-label').textContent} · 초당 ${(cam.frames.length / 2).toFixed(0)}장 · 계산 ${reply.ms} ms · 왕복 ${Math.round(roundTripMs)} ms`);
+      const needed = Boolean(reply.state && stopNeeded(reply.state));  // 진동도 소리와 같은 때 (정지가 필요해진 순간)
+      if (needed && !cam.lastStop && byId('cam-vibrate').checked && navigator.vibrate) navigator.vibrate(200);
+      cam.lastStop = needed;
+    }
+    // 민감도 슬라이더: 위험도가 몇부터 정지할지 (0.15 민감 ~ 0.60 둔감, 기본 0.30). 서버가 이 휴대폰의 파이프라인에만 건다 —
+    // 풀리는 기준도 같은 비율로 따라간다. 흐름 패널·관제 카드의 기준선(th)도 이 값으로 옮겨진다. 고른 값은 이 브라우저에 기억한다
+    const STOP_KEY = 'reflexguard-stop';
+    const stopEl = document.getElementById('cam-stop');  // (byId는 아래에서 정의 — 화면을 읽을 때 바로 쓴다)
+    function showStopLevel() {
+      const stop = Number(stopEl.value) / 100;
+      const word = stop <= 0.2 ? '매우 민감' : stop <= 0.26 ? '민감' : stop <= 0.34 ? '보통' : stop <= 0.45 ? '둔감' : '매우 둔감';
+      document.getElementById('cam-stop-text').textContent = `${word} · 위험도 ${stop.toFixed(2)}부터`;
+    }
+    try {
+      const saved = Number(localStorage.getItem(STOP_KEY));
+      if (saved >= 15 && saved <= 60) stopEl.value = String(Math.round(saved));
+    } catch (error) { /* 저장소를 못 쓰면 기본값 */ }
+    showStopLevel();
+    stopEl.addEventListener('input', () => {
+      showStopLevel();
+      try { localStorage.setItem(STOP_KEY, stopEl.value); } catch (error) { /* 이번 화면에서만 */ }
+    });
+    document.getElementById('cam-speed').addEventListener('click', event => {
+      const button = event.target.closest('button[data-speed]');
+      if (!button) return;
+      cam.speedAuto = button.dataset.speed === 'auto';
+      cam.speed = cam.speedAuto ? Math.round(walk.speed * 10) / 10 : Number(button.dataset.speed);
+      byId('cam-speed-auto').textContent = cam.speedAuto ? (walk.seen ? `자동 · ${cam.speed > 0 ? `걷기 ${cam.speed.toFixed(1)} m/s` : '서 있음'}`
+                                                                    : '자동') : '자동';
+      byId('cam-speed').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+    });
+
+    // ----- 회피 반사 흐름 패널 · 알림 -----
+    // 컨트롤러가 보내는 것: "state:<JSON>" 흐름 한 스텝(초당 10번까지), "reflex:<JSON>" 작동 사건(start/stage/end).
+    // 형식은 wheelchair/reflex_log.py의 flow_snapshot()·ReflexMonitor를 따른다.
+    const STAGES = {  // 공유 제어 단계(ReflexModule.stage) → 화면 글자와 색
+      safe: { label: '안전', short: '안전', tone: '' },
+      slow: { label: '주의 · 감속', short: '감속', tone: 'warn' },
+      stop: { label: '위험 · 정지', short: '정지', tone: 'danger' },
+      avoid: { label: '회피 · 자동 조향', short: '회피', tone: 'accent' },
+      return: { label: '복귀 · 원래 방향으로', short: '복귀', tone: 'accent' },
+      veer: { label: '옆벽 피하기 · 살짝 떼어 놓기', short: '옆벽', tone: 'accent' },
+      override: { label: '개입', short: '개입', tone: 'accent' },
+      manual: { label: '수동 주행 · 개입 없음', short: '수동', tone: 'warn' },
+    };
+    const SIGNALS = { NONE: '위험 없음', STOP: '정지', LEFT: '왼쪽으로 회피', RIGHT: '오른쪽으로 회피' };
+    const SIGNAL_TONES = { STOP: 'danger', LEFT: 'accent', RIGHT: 'accent' };
+    const TONE_COLORS = { warn: 'var(--warn)', danger: 'var(--danger)', accent: 'var(--accent)' };
+    const LOOMING_HOT = 0.15;      // LPLC2 입력(0~1)이 이 값 이상이면 ① 칸을 '감지'로 표시
+    const ALERT_HOLD_MS = 2500;    // 작동이 끝난 뒤 '종료' 알림을 남겨 두는 시간
+    const ALERT_MISSED_MS = 3000;  // 흐름 상태가 이만큼 계속 '개입 없음'이면 종료 사건을 놓친 것으로 보고 알림을 내린다
+    const MAX_EVENTS = 60;         // 최근 기록에 남기는 수 (작동·충돌·도착·스위치)
+
+    const flowEl = document.getElementById('flow');
+    const alertEl = document.getElementById('alert');
+    const eventsEl = document.getElementById('events');
+    const byId = id => document.getElementById(id);
+    let lastStateAt = 0;        // 마지막으로 흐름 상태를 받은 시각(ms)
+    let alertActive = false;    // 작동 알림을 띄우고 있는지
+    let alertEpisode = 0;       // 알림에 띄운 작동 번호 (흐름 상태로 알림을 띄웠으면 0)
+    let lastActiveAt = 0;       // 마지막으로 '개입 중'을 본 시각(ms)
+    let alertTimer = 0;
+    let eventCount = 0;         // 이 화면을 연 뒤로 본 작동 수
+    let ticksDrawn = false;
+
+    function parseJson(text) {
+      try { return JSON.parse(text); } catch (error) { return null; }
+    }
+    function fmt(value, digits = 2) {
+      return value === null || value === undefined ? '—' : Number(value).toFixed(digits);
+    }
+    function signed(value) {
+      return value === null || value === undefined ? '—' : (value > 0 ? '+' : '') + Number(value).toFixed(2);
+    }
+    function stageOf(name) { return STAGES[name] || STAGES.override; }
+    function signalText(name) { return SIGNALS[name] || name; }
+    function judgeText(name) { return name === 'NONE' ? '위험 없음' : `${signalText(name)} 판단`; }  // 문장 안: '위험 없음', '정지 판단'
+    function clockText(iso) { return typeof iso === 'string' ? iso.slice(11, 19) : ''; }  // "2026-…T18:58:02.123" → "18:58:02"
+
+    function setMeter(id, value) {
+      byId(id + '-bar').style.setProperty('--v', String(Math.max(0, Math.min(1, value || 0))));
+      byId(id).textContent = fmt(value);
+    }
+    function setChip(el, label, tone) {
+      el.textContent = label;
+      if (tone) el.dataset.tone = tone; else delete el.dataset.tone;
+    }
+    function setHot(el, hot, tone) {
+      el.dataset.hot = String(hot);
+      el.style.setProperty('--tone', TONE_COLORS[tone] || TONE_COLORS.accent);
+    }
+    function setCommand(axis, user, applied) {
+      byId('u-' + axis).textContent = signed(user);
+      const cell = byId('a-' + axis);
+      cell.textContent = signed(applied);
+      cell.dataset.changed = String(Math.abs((applied || 0) - (user || 0)) > 0.005);  // 공유 제어가 바꾼 값은 강조
+    }
+    // 위험도 막대에 디코더 기준선(정지 해제·정지)을 한 번만 그린다
+    function drawTicks(th) {
+      if (ticksDrawn || !th || th.decode_stop_on === undefined) return;
+      const track = byId('br-escape-track');
+      for (const [at, label] of [[th.decode_stop_off, '정지 해제 기준'], [th.decode_stop_on, '정지 기준']]) {
+        const tick = document.createElement('span');
+        tick.className = 'tick';
+        tick.style.setProperty('--at', String(at));
+        tick.title = `${label} ${at}`;
+        track.append(tick);
+      }
+      ticksDrawn = true;
+    }
+
+    // 흐름 한 스텝을 패널에 그린다: ① 루밍 → ② 커넥톰 → ③ 공유 제어
+    // 정지 소리: 정지가 필요한 순간에만 삐~ 한 번 (Web Audio로 만든다 — 소리 파일 없음) — stopNeeded.
+    // 브라우저는 사용자가 화면을 누르기 전에는 소리를 막으므로, 처음 누를 때(키를 누를 때) 소리 장치를 연다
+    const stopSound = { ctx: null, last: false, at: -Infinity };
+    function unlockSound() {
+      try {
+        stopSound.ctx = stopSound.ctx || new (window.AudioContext || window.webkitAudioContext)();
+        if (stopSound.ctx.state === 'suspended') stopSound.ctx.resume();
+      } catch (error) { /* 소리를 낼 수 없는 브라우저 — 진동·화면 표시만 */ }
+    }
+    for (const name of ['pointerdown', 'keydown']) window.addEventListener(name, unlockSound, { passive: true });
+    function playStopSound() {  // 삐~ (1 kHz 사인파 0.6초 — 부드럽게 켜고 끈다)
+      const ctx = stopSound.ctx;
+      if (!ctx || ctx.state !== 'running') return;
+      const start = ctx.currentTime, tone = ctx.createOscillator(), gain = ctx.createGain();
+      tone.type = 'sine';
+      tone.frequency.value = 1000;
+      gain.gain.setValueAtTime(0.0001, start);
+      gain.gain.exponentialRampToValueAtTime(0.3, start + 0.02);
+      gain.gain.setValueAtTime(0.3, start + 0.55);
+      gain.gain.exponentialRampToValueAtTime(0.0001, start + 0.6);
+      tone.connect(gain).connect(ctx.destination);
+      tone.start(start);
+      tone.stop(start + 0.62);
+    }
+    // 정지가 필요한 상황: 사용자가 앞으로 가려는데 커넥톰이 정지 신호를 내어 공유 제어가 그 전진을 막았다. 서 있거나 후진·
+    // 회전만 할 때, 판단이 없어 선 것(안전 정지 — 커넥톰 끊김), 정지가 붙들린 채 이어지는 동안은 울리지 않는다.
+    // (예전에는 신호가 STOP으로 바뀌기만 하면 울려, 가만히 서 있는데 앞으로 사람이 지나갈 때도 울렸다)
+    // 휴대폰 카메라 체험은 서 있어도 '앞으로 가려 함'으로 판단하므로, 걷는 중(state.phone.walking — 서버가 걸음 속도·카메라
+    // 짐작으로 정한다)일 때만
+    function stopNeeded(state) {
+      const brain = state.brain || {}, reflex = state.reflex || {}, user = state.user || {}, applied = state.applied || {};
+      if (state.camera === 'phone' && !(state.phone && state.phone.walking)) return false;
+      return Boolean(brain.ok && brain.signal === 'STOP' && reflex.stage === 'stop' && reflex.active
+                     && (user.forward || 0) > 0.05 && (applied.forward || 0) < (user.forward || 0) - 0.05);
+    }
+    function soundOnStop(state, now) {  // 정지가 필요해진 순간 한 번 (1초 안에 다시 바뀌면 울리지 않는다 — 신호가 떨릴 때)
+      const needed = stopNeeded(state);
+      if (needed && !stopSound.last && now - stopSound.at > 1000 && byId('stop-sound').checked) {
+        stopSound.at = now;
+        playStopSound();
+      }
+      stopSound.last = needed;
+    }
+
+    function showState(state) {
+      if (!state || !state.looming || !state.brain || !state.reflex) return;
+      const now = performance.now();
+      soundOnStop(state, now);
+      lastStateAt = now;
+      flowEl.dataset.stale = 'false';
+      const th = state.th || {};
+      byId('flow-time').textContent = (state.camera === 'phone' ? '카메라 ' : '시뮬레이션 ') + fmt(state.t, 1) + '초';
+
+      const looming = state.looming;
+      setMeter('lo-left', looming.input_left);
+      setMeter('lo-right', looming.input_right);
+      byId('lo-ttc').textContent = looming.ttc === null || looming.ttc > 10 ? '—' : looming.ttc.toFixed(1) + '초';
+      setHot(byId('step-looming'), Math.max(looming.input_left, looming.input_right) >= LOOMING_HOT, 'warn');
+
+      const brain = state.brain;
+      setMeter('br-escape', brain.escape);
+      setMeter('br-left', brain.turn_left);
+      setMeter('br-right', brain.turn_right);
+      setMeter('br-near-left', brain.near_left || 0);
+      setMeter('br-near-right', brain.near_right || 0);
+      drawTicks(th);
+      setChip(byId('br-signal'), brain.ok ? signalText(brain.signal) : '판단 없음', brain.ok ? SIGNAL_TONES[brain.signal] : 'danger');
+      const disconnected = brain.connected === false;
+      byId('br-top').textContent = !brain.ok
+        ? (disconnected ? '커넥톰 연결을 끊었습니다 — 공유 제어로 판단을 보내지 않습니다.' : '커넥톰 판단이 오지 않습니다(장애).')
+        : brain.top && brain.top.length
+          ? '많이 반응한 뉴런: ' + brain.top.map(([id, kind, rate]) => `${kind} #${id} ${rate}Hz`).join(', ')
+          : '반응한 뉴런 없음';
+      byId('cam-cal').hidden = !state.calibration;
+      if (state.calibration) byId('cam-cal').textContent = '카메라 보정: ' + calibrationText(state.calibration);
+      byId('step-brain').dataset.off = String(!brain.ok);
+      byId('arrow-brain').textContent = brain.ok ? '▼ 위험도·판단'
+        : state.reflex.stage === 'manual' ? '▼ 판단 없음 → 안전 스위치: 수동 주행' : '▼ 판단 없음 → 모든 이동 정지';
+      showSwitches(brain.connected, state.safety);
+      if (state.estop) {  // 관제 대시보드에서 비상 정지를 걸었다 — 해제도 대시보드에서
+        const badge = byId('connectome-badge');
+        badge.hidden = false;
+        badge.dataset.tone = 'danger';
+        badge.textContent = '관제 대시보드: 비상 정지 중 (대시보드에서 해제)';
+      } else if (state.speed_limit && state.speed_limit < 100 && byId('connectome-badge').hidden) {  // 관제의 원격 속도 제한
+        const badge = byId('connectome-badge');
+        badge.hidden = false;
+        badge.dataset.tone = 'warn';
+        badge.textContent = `관제 서버: 속도 제한 ${state.speed_limit}%까지 (관제 화면에서 해제)`;
+      }
+      showMaps(state.map, state.maps);
+      showSensor(state.sensor);
+      showBrainWhere(state.server);
+      showTrip(state.trip);
+      const brainHot = !brain.ok || brain.signal !== 'NONE' || brain.escape >= (th.decode_stop_off ?? 0.12);
+      setHot(byId('step-brain'), brainHot, !brain.ok || brain.signal === 'STOP' ? 'danger' : 'warn');
+
+      const reflex = state.reflex;
+      const stage = stageOf(reflex.stage);
+      setChip(byId('rf-stage'), stage.label, stage.tone);
+      const nowEl = byId('now');
+      nowEl.hidden = false;
+      nowEl.dataset.tone = !brain.ok ? 'danger' : reflex.active ? (stage.tone || 'warn') : '';
+      nowEl.replaceChildren(document.createTextNode(brain.ok ? stage.short : '판단 없음'),
+        Object.assign(document.createElement('small'), { textContent: brain.ok ? `위험도 ${fmt(brain.escape)}` : '안전 정지' }));
+      logSwitches(state);
+      const idle = byId('idle');
+      const [idleTitle, idleDetail, idleTone] = state.camera === 'phone'
+        ? ['위험 없음', `위험도 ${fmt(brain.escape)} · ${judgeText(brain.signal)}`
+            + (state.looming.ttc !== null && state.looming.ttc <= 10 ? ` · 부딪히기까지 ${fmt(state.looming.ttc, 1)}초` : ''), '']
+        : reflex.stage === 'manual'
+        ? ['수동 주행 · 개입 없음', '커넥톰이 꺼져 있고 안전 스위치가 켜져 있어 내 입력 그대로 움직입니다 — 보호 없음', 'warn']
+        : state.estop ? ['비상 정지 중', '관제 대시보드에서 비상 정지를 걸었습니다 (해제도 대시보드에서)', 'warn']
+        : ['개입 없음 · 내 입력 그대로', `위험도 ${fmt(brain.escape)} · ${judgeText(brain.signal)}`
+            + (state.looming.ttc !== null && state.looming.ttc <= 10 ? ` · 부딪히기까지 ${fmt(state.looming.ttc, 1)}초` : ''), ''];
+      byId('idle-title').textContent = idleTitle;
+      byId('idle-detail').textContent = idleDetail;
+      if (idleTone) idle.dataset.tone = idleTone; else delete idle.dataset.tone;
+      setHot(byId('step-reflex'), reflex.active, stage.tone);
+      byId('step-reflex').dataset.off = String(reflex.stage === 'manual');  // 수동 주행: 공유 제어가 빠져 있다
+      setCommand('forward', state.user.forward, state.applied.forward);
+      setCommand('turn', state.user.turn, state.applied.turn);
+
+      // 알림을 흐름 상태와 맞춘다: 작동 중에는 둘째 줄(위험도·신호)을 지금 값으로 갱신하고,
+      // 작동 도중 화면을 열었거나 사건 메시지를 놓쳤으면 흐름 상태로 알림을 띄운다
+      if (state.crash && state.crash.frozen && !crashActive) showCrash({ count: state.crash.count });
+      if (reflex.active) {
+        lastActiveAt = now;
+        if (alertActive) showAlertDetail(state);
+        else showAlert({ episode: 0, ...state });
+      } else if (alertActive && now - lastActiveAt > ALERT_MISSED_MS) {
+        hideAlert();
+      }
+    }
+
+    // 스위치·위험 인식·맵·비상 정지가 바뀌면 최근 기록에 남긴다 (흐름 상태를 앞 상태와 견준다 — 처음 받은 상태는 기록하지 않는다)
+    let lastSwitches = null;
+    function logSwitches(state) {
+      const now = { connectome: state.brain.connected !== false, safety: !!state.safety, sensor: state.sensor || null,
+                    map: state.map || null, estop: !!state.estop };
+      const before = lastSwitches;
+      lastSwitches = now;
+      if (!before) return;
+      const changes = [
+        [now.connectome !== before.connectome, now.connectome ? 'muted' : 'danger', '스위치', now.connectome ? '커넥톰 연결 켬' : '커넥톰 연결 끔',
+         now.connectome ? '커넥톰 판단으로 다시 보호합니다' : (now.safety ? '안전 스위치가 켜져 있어 수동 주행' : '판단 없음 → 모든 이동 정지')],
+        [now.safety !== before.safety, now.safety ? 'warn' : 'muted', '스위치', now.safety ? '안전 스위치 켬' : '안전 스위치 끔',
+         now.safety ? '커넥톰이 꺼져도 수동 주행 허용' : '커넥톰이 꺼지면 이동을 막습니다'],
+        [now.sensor && before.sensor && now.sensor !== before.sensor, 'muted', '위험 인식',
+         now.sensor === 'range' ? '거리 센서 → 커넥톰' : '카메라 → 커넥톰', '판단·개입은 그대로 커넥톰'],
+        [now.estop !== before.estop, now.estop ? 'danger' : 'muted', '비상 정지', now.estop ? '관제 대시보드에서 비상 정지' : '비상 정지 해제', ''],
+      ];
+      for (const [changed, tone, label, title, detail] of changes) {
+        if (changed) setLog(logItem('switch', tone), nowClock(), label, title, detail);
+      }
+    }
+
+    // 작동 알림 (영상 바로 아래 상태 줄). 시작·단계 변경 때 띄우고, 끝나면 '종료'를 잠깐 보여 준 뒤 내린다
+    function showAlert(event) {
+      clearTimeout(alertTimer);
+      alertActive = true;
+      alertEpisode = event.episode || alertEpisode;
+      lastActiveAt = performance.now();
+      if (crashActive) return;  // 충돌 알림이 떠 있는 동안은 덮어쓰지 않는다
+      alertEl.dataset.ended = 'false';
+      showAlertDetail(event);
+      alertEl.hidden = false;
+    }
+    // 제목(작동 번호·단계)은 바뀔 때만 다시 쓴다 → 낭독기는 시작·단계 변경·종료 때만 읽는다
+    function showAlertDetail(state) {
+      if (crashActive) return;
+      const number = alertEpisode ? ' #' + alertEpisode : '';
+      if (!state.brain.ok) {  // 커넥톰 판단이 없어 공유 제어가 안전 정지(fail-safe)한 것
+        const why = state.brain.connected === false ? '커넥톰 연결 끊김'
+          : state.server && state.server.remote && !state.server.connected ? '커넥톰 서버 연결 끊김' : '커넥톰 판단 없음';
+        const title = `${why}${number} · 안전 정지`;
+        if (byId('alert-title').textContent !== title) byId('alert-title').textContent = title;
+        alertEl.dataset.stage = 'stop';
+        byId('alert-detail').textContent = '판단이 없어 모든 이동을 막았습니다 · 안전 스위치를 켜면 수동 주행';
+        return;
+      }
+      const stage = stageOf(state.reflex.stage);
+      const title = `회피 반사 작동${number} · ${stage.label}`;
+      if (byId('alert-title').textContent !== title) byId('alert-title').textContent = title;
+      alertEl.dataset.stage = state.reflex.stage;
+      const turn = state.applied.turn || 0;
+      // 회전 방향은 로봇 기준(A=좌회전, D=우회전)
+      const steer = state.reflex.stage !== 'avoid' || Math.abs(turn) <= 0.05 ? ''
+        : (turn < 0 ? '왼쪽으로 조향' : '오른쪽으로 조향');
+      byId('alert-detail').textContent = [
+        steer,
+        `위험도 ${fmt(state.brain.escape)}`,
+        `${judgeText(state.brain.signal)}`,
+        // 정지를 푸는 방법 (wheelchair.shared_control.ReflexModule): 아직 위험하면 모든 조작을 막고(locked),
+        // 위험이 사라지면 전진을 놓거나 누른 채 20도쯤 돌리면 다시 출발
+        state.reflex.stage !== 'stop' ? ''
+          : state.camera === 'phone' ? '멈추세요 — 위험이 사라지면 풀립니다'
+          : state.reflex.locked ? '위험이 사라질 때까지 모든 조작을 막습니다' : 'A/D로 방향을 돌리거나 W를 떼면 다시 출발',
+      ].filter(Boolean).join(' · ');
+    }
+    function endAlert(event) {
+      alertActive = false;
+      alertEpisode = 0;
+      if (crashActive) return;
+      alertEl.dataset.ended = 'true';
+      byId('alert-title').textContent = `회피 반사 종료 #${event.episode} · 운전 권한 복귀`;
+      byId('alert-detail').textContent = `${fmt(event.duration, 1)}초 · ${event.stages.map(name => stageOf(name).short).join(' → ')}`;
+      alertEl.hidden = false;
+      clearTimeout(alertTimer);
+      alertTimer = setTimeout(() => { alertEl.hidden = true; }, ALERT_HOLD_MS);
+    }
+    function hideAlert() {
+      clearTimeout(alertTimer);
+      alertActive = false;
+      alertEpisode = 0;
+      if (!crashActive) alertEl.hidden = true;
+    }
+
+    // ----- 벽·장애물 충돌 → 처음부터 다시 -----
+    // 컨트롤러가 보내는 것: "collision:<JSON>" — type "collision"(부딪힘, 그 자리에서 restart_in초 멈춤)과
+    // type "restart"(처음 위치에서 다시 시작). 충돌 알림이 떠 있는 동안은 회피 반사 알림이 덮어쓰지 않는다.
+    const CRASH_MISSED_MS = 3000;  // '다시 시작' 소식이 예정보다 이만큼 더 늦으면 놓친 것으로 보고 충돌 알림을 내린다
+    const RESTART_HOLD_MS = 2500;  // '다시 시작했습니다' 알림을 보여 주는 시간
+    const CAUSES = {  // 부딪힌 순간 실제로 하던 움직임 (simulation/collision.py의 collision_cause)
+      reverse: { long: '후진하다 부딪힘', short: '후진 중' },
+      forward: { long: '전진하다 부딪힘', short: '전진 중' },
+      strafe: { long: '옆으로 움직이다 부딪힘', short: '옆걸음 중' },
+      turn: { long: '회전하다 부딪힘', short: '회전 중' },
+    };
+    const TARGETS = { wall: '벽', adult: '사람', child: '어린이', ball: '공' };  // 부딪힌 것 (simulation/collision.py의 collision_target)
+    const targetOf = (event) => TARGETS[event.with] || (event.with ? '물체' : '벽');
+    let crashActive = false;  // 충돌 알림을 띄우고 있는지 (멈춰 있는 동안)
+    let crashTimer = 0;
+    let crashesSeen = 0;      // 이 화면을 연 뒤로 본 충돌 수
+
+    function showCrash(event) {
+      crashActive = true;
+      clearTimeout(alertTimer);
+      clearTimeout(crashTimer);
+      alertEl.dataset.stage = 'crash';
+      alertEl.dataset.ended = 'false';
+      byId('alert-title').textContent = `${targetOf(event)}에 부딪혔습니다${event.count ? ' #' + event.count : ''}`;
+      byId('alert-detail').textContent = [
+        (CAUSES[event.cause] || {}).long,
+        typeof event.restart_in === 'number' ? `${fmt(event.restart_in, 1)}초 뒤 처음부터 다시` : '곧 처음부터 다시',
+      ].filter(Boolean).join(' · ');
+      alertEl.hidden = false;
+      viewEl.dataset.crash = 'true';
+      crashTimer = setTimeout(clearCrash, (event.restart_in || 0) * 1000 + CRASH_MISSED_MS);
+    }
+    function clearCrash() {
+      clearTimeout(crashTimer);
+      crashActive = false;
+      viewEl.dataset.crash = 'false';
+      viewEl.dataset.arrived = 'false';
+      if (alertEl.dataset.stage === 'crash' || alertEl.dataset.stage === 'arrival') alertEl.hidden = true;
+    }
+    function showRestart(event) {
+      clearCrash();
+      alertActive = false;
+      alertEpisode = 0;
+      alertEl.dataset.stage = 'restart';
+      alertEl.dataset.ended = 'true';
+      byId('alert-title').textContent = event.after === 'arrival' ? '처음 위치에서 새 주행을 시작했습니다' : '처음 위치에서 다시 시작했습니다';
+      byId('alert-detail').textContent = event.after === 'arrival' ? '초록 바둑판(도착지)까지 다시 가 보세요'
+        : `충돌 ${event.count}회째 · 루밍·커넥톰·공유 제어를 새로 시작`;
+      alertEl.hidden = false;
+      clearTimeout(alertTimer);
+      alertTimer = setTimeout(() => { alertEl.hidden = true; }, RESTART_HOLD_MS);
+    }
+    function handleCollisionEvent(event) {
+      if (!event) return;
+      if (event.type === 'collision') {
+        showCrash(event);
+        setLog(logItem('crash', 'danger'), clockText(event.time), '충돌', `${targetOf(event)} 충돌 #${event.count}`, [
+          (CAUSES[event.cause] || {}).short,
+          event.pose ? `위치 (${fmt(event.pose.x, 1)}, ${fmt(event.pose.y, 1)})` : '',
+          event.stage ? `공유 제어 ${stageOf(event.stage).short}` : '',
+          event.connectome === false ? (event.safety ? '커넥톰 꺼짐 · 수동 주행' : '커넥톰 꺼짐') : '',
+          '처음부터 다시',
+        ].filter(Boolean).join(' · '));
+        crashesSeen++;
+        updateCounts();
+      } else if (event.type === 'restart') {
+        showRestart(event);
+      } else if (event.type === 'arrival') {
+        showArrival(event);
+        setLog(logItem('arrival', 'good'), clockText(event.time), '도착',
+          `도착 #${event.count} · ${fmt(event.elapsed, 1)}초 · 커넥톰 개입 ${event.interventions}번`,
+          [stageCounts(event.by_stage), `${fmt(event.distance, 1)} m`, attemptsText(event)].filter(Boolean).join(' · '));
+        arrivalsSeen++;
+        updateCounts();
+      }
+    }
+    function updateCounts() {
+      byId('event-count').textContent = `작동 ${eventCount} · 충돌 ${crashesSeen}` + (arrivalsSeen ? ` · 도착 ${arrivalsSeen}` : '');
+    }
+
+    // ----- 도착지 -----
+    // 흐름 상태의 trip(simulation/goal.py Trip.progress): 도착지까지 거리(m)·방향(도, 로봇 정면 기준 오른쪽 +)·걸린 시간·이번 주행의 개입 수.
+    // "collision:<JSON>"의 type "arrival"(simulation/goal.py Trip.finish): 도착 — 걸린 시간·거리·커넥톰 개입 수(단계별)·그 전 충돌 수.
+    // 도착 알림이 떠 있는 동안(그 자리에서 restart_in초 멈춤)은 충돌 알림처럼 회피 반사 알림이 덮어쓰지 않는다.
+    let arrivalsSeen = 0;
+    const STAGE_COUNT_NAMES = [['stop', '정지'], ['avoid', '회피'], ['veer', '옆벽 피하기'], ['slow', '감속']];
+    function stageCounts(byStage) {
+      const parts = STAGE_COUNT_NAMES.filter(([key]) => byStage && byStage[key]).map(([key, name]) => `${name} ${byStage[key]}`);
+      return parts.length ? parts.join(' · ') : '';
+    }
+    function attemptsText(event) {
+      return event.failed_attempts ? `그 전에 ${event.failed_attempts}번 부딪혀 다시 시작` : '한 번에 도착';
+    }
+    function directionText(bearing) {
+      const side = bearing > 0 ? '오른쪽' : '왼쪽';
+      const a = Math.abs(bearing);
+      return a < 20 ? '앞' : a < 70 ? side + ' 앞' : a < 110 ? side : side + ' 뒤';
+    }
+    function showTrip(trip) {
+      const box = byId('trip');
+      if (!trip) { box.hidden = true; return; }
+      box.hidden = false;
+      box.dataset.arrived = String(Boolean(trip.arrived));
+      byId('goal-arrow').style.setProperty('--bearing', `${trip.bearing || 0}deg`);
+      byId('goal-distance').textContent = trip.arrived ? '도착!' : `도착지까지 ${fmt(trip.distance, 0)} m`;
+      byId('trip-detail').textContent = [
+        trip.arrived ? '' : directionText(trip.bearing || 0),
+        `커넥톰 개입 ${trip.interventions}번`,
+        `${fmt(trip.elapsed, 0)}초`,
+        trip.attempt > 1 ? `${trip.attempt}번째 시도` : '',
+      ].filter(Boolean).join(' · ');
+    }
+    function showArrival(event) {
+      crashActive = true;  // 도착 알림이 떠 있는 동안 회피 반사 알림이 덮어쓰지 않게 (충돌 알림과 같은 자리)
+      clearTimeout(alertTimer);
+      clearTimeout(crashTimer);
+      alertEl.dataset.stage = 'arrival';
+      alertEl.dataset.ended = 'false';
+      byId('alert-title').textContent = `도착했습니다! 커넥톰 개입 ${event.interventions}번`;
+      const counts = stageCounts(event.by_stage);
+      byId('alert-detail').textContent = [
+        `${fmt(event.elapsed, 1)}초 · ${fmt(event.distance, 1)} m`,
+        counts ? `(${counts})` : '',
+        attemptsText(event),
+        typeof event.restart_in === 'number' ? `${fmt(event.restart_in, 0)}초 뒤 처음부터` : '',
+      ].filter(Boolean).join(' · ');
+      alertEl.hidden = false;
+      viewEl.dataset.arrived = 'true';
+      crashTimer = setTimeout(clearCrash, (event.restart_in || 0) * 1000 + CRASH_MISSED_MS);
+    }
+
+    // ----- 제어 스위치: 커넥톰 연결 · 안전 스위치 -----
+    // 누르면 "connectome:on|off" / "safety:on|off"를 보낸다. 스위치 모양은 컨트롤러가 흐름 상태로 알려 준
+    // 실제 상태를 따르고, 반영을 확인하기 전에는 '바꾸는 중'으로 둔다.
+    // 컨트롤러를 다시 켜면 커넥톰은 켜짐, 안전 스위치는 꺼짐으로 시작한다.
+    const SWITCH_PENDING_MS = 2000;  // 이 시간 안에 반영이 확인되지 않으면 요청을 잊고 실제 상태를 보여 준다
+    const MODES = {
+      normal: '정상: 커넥톰 판단으로 공유 제어가 보호합니다',
+      blocked: '커넥톰 꺼짐 → 판단이 없어 모든 이동을 막습니다 (안전 스위치를 켜면 수동 주행)',
+      manual: '커넥톰 꺼짐 + 안전 스위치 → 수동 주행: 공유 제어가 개입하지 않아 벽에 부딪힐 수 있습니다',
+    };
+
+    function makeSwitch(id, labels, send) {
+      const el = byId(id);
+      const labelEl = el.querySelector('.switch-label');
+      const sw = { actual: null, wanted: null, wantedAt: 0 };  // actual: 컨트롤러가 알려 준 상태 (모르면 null)
+      sw.show = on => {
+        sw.actual = typeof on === 'boolean' ? on : null;  // 이 기능이 없는 예전 컨트롤러면 null
+        if (sw.wanted !== null && (sw.wanted === sw.actual || performance.now() - sw.wantedAt > SWITCH_PENDING_MS)) {
+          sw.wanted = null;
+        }
+        const shown = sw.wanted ?? sw.actual;
+        el.disabled = sw.actual === null;
+        el.setAttribute('aria-checked', String(shown === true));
+        el.setAttribute('aria-busy', String(sw.wanted !== null));
+        labelEl.textContent = sw.actual === null ? '알 수 없음'
+          : sw.wanted !== null ? '바꾸는 중…' : shown ? labels.on : labels.off;
+      };
+      el.addEventListener('click', () => {
+        if (sw.actual === null) return;
+        sw.wanted = !(sw.wanted ?? sw.actual);
+        sw.wantedAt = performance.now();
+        send(sw.wanted);
+        sw.show(sw.actual);
+      });
+      return sw;
+    }
+    const connectomeSwitch = makeSwitch('connectome-switch', { on: '켜짐', off: '꺼짐 · 판단 없음' }, on => {
+      if (controllerReady()) sendToController('connectome:' + (on ? 'on' : 'off'));
+    });
+    const safetySwitch = makeSwitch('safety-switch', { on: '켜짐', off: '꺼짐' }, on => {
+      if (controllerReady()) sendToController('safety:' + (on ? 'on' : 'off'));
+    });
+
+    // ----- 커넥톰을 어디서 계산하는지 (컨트롤러 안 / 커넥톰 연산 서버 brain_server/server.py) -----
+    function showBrainWhere(server) {
+      const el = byId('brain-where');
+      if (!server) { el.dataset.mode = 'unknown'; el.textContent = '커넥톰 계산: —'; return; }
+      if (!server.remote) { el.dataset.mode = 'normal'; el.textContent = '커넥톰 계산: 이 컴퓨터(컨트롤러 안)'; return; }
+      el.dataset.mode = server.connected ? 'normal' : 'blocked';
+      el.textContent = server.connected
+        ? `커넥톰 계산: 서버 ${server.address} · 연결됨${typeof server.rtt_ms === 'number' ? ' · 응답 ' + fmt(server.rtt_ms, 1) + ' ms' : ''}`
+        : `커넥톰 계산: 서버 ${server.address} · 연결 끊김 → 판단 없음 (다시 접속 중)`;
+    }
+
+    // ----- 위험 인식 센서: 카메라 → 커넥톰 / 거리 센서 → 커넥톰 -----
+    // 컨트롤러가 흐름 상태에 지금 센서("sensor")를 싣는다. 버튼을 누르면 "sensor:<camera|range>"를 보내고,
+    // 반영이 확인될 때까지(최대 SWITCH_PENDING_MS) '바꾸는 중'으로 둔다
+    const sensorGroup = byId('sensor-buttons');
+    const sensorButtons = [...sensorGroup.querySelectorAll('button')];
+    const SENSOR_SOURCES = { camera: '앞 카메라 영상이 커지는 정도', range: '거리 센서: 다가오는 빠르기 ÷ 거리' };
+    let sensorActual = null;
+    let sensorPending = null;
+    let sensorPendingAt = 0;
+    function showSensor(current) {
+      sensorActual = current === 'camera' || current === 'range' ? current : null;  // 연결이 없거나 예전 컨트롤러면 null
+      if (sensorPending !== null && (sensorPending === sensorActual || performance.now() - sensorPendingAt > SWITCH_PENDING_MS)) {
+        sensorPending = null;
+      }
+      const shown = sensorPending ?? sensorActual;
+      sensorGroup.setAttribute('aria-busy', String(sensorPending !== null));
+      for (const button of sensorButtons) {
+        button.disabled = sensorActual === null || sensorPending !== null;
+        button.setAttribute('aria-pressed', String(button.dataset.sensor === shown));
+      }
+      if (sensorActual !== null) byId('lo-source').textContent = SENSOR_SOURCES[sensorActual];
+    }
+    for (const button of sensorButtons) {
+      button.addEventListener('click', () => {
+        if (!controllerReady()) return;
+        if (sensorActual === null || button.dataset.sensor === sensorActual) return;
+        sensorPending = button.dataset.sensor;
+        sensorPendingAt = performance.now();
+        sendToController('sensor:' + sensorPending);
+        showSensor(sensorActual);
+      });
+    }
+
+    // ----- 맵 고르기 -----
+    // 컨트롤러가 흐름 상태에 지금 맵("map")과 목록("maps": [[이름, 제목], …])을 싣는다. 고르면 "map:<이름>"을 보내고,
+    // 컨트롤러는 Webots에 그 월드를 불러오게 한다 → 새 월드의 컨트롤러가 다시 신호를 보내면 이 화면도 이어서 동작한다.
+    const MAP_PENDING_MS = 20000;  // 이 시간 안에 맵이 바뀌지 않으면 고르기를 다시 쓸 수 있게 한다
+    const mapSelect = byId('map-select');
+    let mapList = '';       // 지금 그려 둔 목록 (같으면 다시 그리지 않는다)
+    let mapPending = null;  // 바꾸는 중인 맵 이름
+    let mapPendingAt = 0;
+    function showMaps(current, maps) {
+      if (typeof current !== 'string' || !Array.isArray(maps)) {  // 연결이 없거나 예전 컨트롤러
+        mapSelect.disabled = true;
+        if (mapPending !== null && performance.now() - mapPendingAt > MAP_PENDING_MS) mapPending = null;
+        return;
+      }
+      const key = JSON.stringify(maps);
+      if (key !== mapList) {
+        mapSelect.replaceChildren(...maps.map(([name, title]) => new Option(title, name)));
+        mapList = key;
+      }
+      if (mapPending === current || (mapPending !== null && performance.now() - mapPendingAt > MAP_PENDING_MS)) {
+        mapPending = null;
+      }
+      if (mapPending === null) mapSelect.value = current;
+      mapSelect.disabled = mapPending !== null;
+    }
+    mapSelect.addEventListener('change', () => {
+      if (!controllerReady()) return;
+      mapPending = mapSelect.value;
+      mapPendingAt = performance.now();
+      mapSelect.disabled = true;
+      sendToController('map:' + mapPending);
+      const title = mapSelect.selectedOptions[0] ? mapSelect.selectedOptions[0].textContent : mapPending;
+      setStatus('waiting', `'${title}' 맵을 불러오는 중…`);
+    });
+
+    // 스위치 두 개와, 그 조합으로 정해지는 모드(정상 / 이동 정지 / 수동 주행)를 그린다
+    function showSwitches(connected, safety) {
+      connectomeSwitch.show(connected);
+      safetySwitch.show(safety);
+      const known = typeof connected === 'boolean';
+      const mode = !known ? null : connected ? 'normal' : safety ? 'manual' : 'blocked';
+      const modeEl = byId('mode');
+      modeEl.dataset.mode = mode || 'unknown';
+      modeEl.textContent = mode ? MODES[mode] : '—';
+      const badge = byId('connectome-badge');
+      badge.hidden = mode !== 'blocked' && mode !== 'manual';
+      badge.dataset.tone = mode === 'manual' ? 'warn' : 'danger';
+      badge.textContent = mode === 'manual' ? '커넥톰 꺼짐 · 수동 주행' : '커넥톰 연결 끊김 · 이동 정지';
+    }
+
+    // 최근 작동 목록: 시작하면 '작동 중'으로 넣고, 끝나면 요약으로 바꾼다
+    // 최근 기록 한 줄: 시각 | [종류] 제목 / 자세히. 종류마다 왼쪽 띠 색(tone)이 다르다
+    function logItem(kind, tone) {
+      eventsEl.querySelector('.empty')?.remove();
+      const item = document.createElement('li');
+      item.dataset.kind = kind;
+      item.dataset.tone = tone || '';
+      const title = document.createElement('b');
+      title.append(document.createElement('em'), document.createTextNode(''));
+      item.append(document.createElement('time'), title, document.createElement('span'));
+      eventsEl.prepend(item);
+      while (eventsEl.children.length > MAX_EVENTS) eventsEl.lastElementChild.remove();
+      return item;
+    }
+    function setLog(item, time, label, title, detail) {
+      item.children[0].textContent = time;
+      item.children[1].firstChild.textContent = label;
+      item.children[1].lastChild.textContent = title;
+      item.children[2].textContent = detail;
+    }
+    const nowClock = () => new Date().toTimeString().slice(0, 8);
+    function eventItem(episode) {
+      const key = `${mode}-${episode}`;  // 시뮬레이션과 카메라 체험은 작동 번호를 따로 센다
+      const found = eventsEl.querySelector(`li[data-episode="${key}"]`);
+      if (found) return found;
+      const item = logItem('reflex');
+      item.dataset.episode = key;
+      eventCount++;
+      updateCounts();
+      return item;
+    }
+    function calibrationText(cal) {  // 카메라 자기 보정 (wheelchair/looming/calibration.py) — 지금 쓰는 값과 배우는 정도
+      if (!cal) return '—';
+      if (!cal.on) return '꺼짐 (설정값 그대로)';
+      const s = cal.samples || {};
+      const learning = [s.fov < s.need ? `화각은 서서 돌 때 ${s.fov}/${s.need}` : '', s.noise < s.need ? `잡음은 멈췄을 때 ${s.noise}/${s.need}` : '']
+        .filter(Boolean);
+      return `화각 ${cal.fov}° · 숙임 ${cal.pitch}°${cal.pitch_from === 'gravity' ? '(기울기 센서)' : ''} · 무늬 기준 ${cal.min_std}`
+        + ` · 잡음 바닥 ${cal.floor ? '켬' : '끔'}${learning.length ? ` — 배우는 중: ${learning.join(', ')}` : ''}`;
+    }
+    function handleReflexEvent(event) {
+      if (!event || !event.episode) return;
+      if (event.type === 'start' || event.type === 'stage') {
+        showAlert(event);
+        const item = eventItem(event.episode);
+        const stage = stageOf(event.reflex.stage);
+        item.dataset.tone = stage.tone || 'warn';
+        if (event.type === 'start') {
+          item.dataset.live = 'true';
+          setLog(item, clockText(event.time), stage.short, `회피 반사 #${event.episode} · 작동 중`, event.brain.ok
+            ? `${stage.short} 시작 · 위험도 ${fmt(event.brain.escape)} · ${judgeText(event.brain.signal)}`
+            : `안전 정지 시작 · ${event.brain.connected === false ? '커넥톰 연결 끊김' : '커넥톰 판단 없음'}`);
+        } else if (item.dataset.live === 'true') {
+          item.children[1].firstChild.textContent = stage.short;  // 작동 중 단계가 바뀌었다
+        }
+      } else if (event.type === 'end') {
+        endAlert(event);
+        const item = eventItem(event.episode);
+        item.dataset.live = 'false';
+        const strongest = ['stop', 'avoid', 'return', 'veer', 'slow'].find(name => event.stages.includes(name)) || event.stages[0];
+        item.dataset.tone = event.collision ? 'danger' : stageOf(strongest).tone || 'warn';
+        item.children[0].textContent = item.children[0].textContent || clockText(event.time);
+        item.children[1].firstChild.textContent = stageOf(strongest).short;
+        item.children[1].lastChild.textContent = `회피 반사 #${event.episode} · ${fmt(event.duration, 1)}초`
+          + (event.interrupted ? ' · 중간에 끝남' : '');
+        item.children[2].textContent = [
+          [...new Set(event.stages.map(name => stageOf(name).short))].join(' → '),  // 거친 단계를 처음 나온 순서로 한 번씩
+          `최대 위험도 ${fmt(event.peak_escape)}`,
+          event.signals.length ? '판단 ' + event.signals.map(signalText).join(', ') : '',
+          event.no_brain ? '커넥톰 판단 없이 안전 정지' : '',
+          event.collision ? '충돌로 끝남' : '',
+        ].filter(Boolean).join(' · ');
+      }
+    }
+
+    // 영상 크기가 설정과 다르면 화면 비율을 실제 영상에 맞춘다
+    frameEl.addEventListener('load', () => {
+      if (frameEl.naturalWidth && frameEl.naturalHeight)
+        viewEl.parentElement.style.setProperty('--aspect', String(frameEl.naturalWidth / frameEl.naturalHeight));  // 영상·상태 줄이 같은 폭
+    });
+
+    // ----- 입력: 키보드 W A S D + 조이스틱(마우스·터치) -----
+    // 조이스틱 값은 키와 같은 메시지 뒤에 붙여 보낸다: "keys:<화면>:<키>;<전진>,<회전>" (각 -1~1).
+    // 그래서 신호가 끊기면 컨트롤러가 키와 함께 조이스틱 입력도 놓은 것으로 본다.
+    const heldByKeyboard = new Set();
+    let stickPointer = null;     // 조이스틱을 잡고 있는 포인터의 id (안 잡고 있으면 null)
+    let stickX = 0, stickY = 0;  // 조이스틱 위치 -1~1 (화면 기준: x 오른쪽 +, y 아래쪽 +)
+    let lastSentAt = 0;          // 입력을 마지막으로 보낸 시각(ms)
+    let sendTimer = 0;           // 끄는 중인 조이스틱 값을 조금 뒤에 보내려고 잡아 둔 타이머
+
+    // 데드존을 뺀 나머지를 다시 0~1로 늘린다 → 데드존 경계에서 값이 갑자기 튀지 않는다
+    function applyDeadzone(value) {
+      const size = Math.abs(value);
+      if (size <= STICK_DEADZONE) return 0;
+      return Math.sign(value) * Math.min(1, (size - STICK_DEADZONE) / (1 - STICK_DEADZONE));
+    }
+
+    function stickCommand() {
+      return { forward: applyDeadzone(-stickY), turn: applyDeadzone(stickX) };  // 위로 밀면 전진, 오른쪽으로 밀면 우회전
+    }
+
+    // 지금 입력을 화면에 그린다: 둘레의 W A S D 글자와 손잡이 위치
+    function showInput() {
+      const letters = [...heldByKeyboard].join('');
+      const { forward, turn } = stickCommand();
+      const on = {
+        W: letters.includes('W') || forward > 0,
+        S: letters.includes('S') || forward < 0,
+        A: letters.includes('A') || turn < 0,
+        D: letters.includes('D') || turn > 0,
+      };
+      for (const [key, el] of dirs) el.dataset.on = String(on[key]);
+      // 손잡이: 잡고 있으면 포인터를 따라가고, 아니면 키보드로 누른 방향의 끝으로 간다
+      let x = stickX, y = stickY;
+      if (stickPointer === null) {
+        x = Number(letters.includes('D')) - Number(letters.includes('A'));
+        y = Number(letters.includes('S')) - Number(letters.includes('W'));
+        const length = Math.hypot(x, y);
+        if (length > 1) { x /= length; y /= length; }
+      }
+      const reach = (stickEl.clientWidth - knobEl.offsetWidth) / 2;  // 손잡이가 움직일 수 있는 반지름(px)
+      knobEl.style.setProperty('--x', (x * reach).toFixed(1) + 'px');
+      knobEl.style.setProperty('--y', (y * reach).toFixed(1) + 'px');
+      knobEl.dataset.on = String(letters.length > 0);
+      stickEl.dataset.active = String(stickPointer !== null);
+    }
+
+    function sendKeys() {
+      clearTimeout(sendTimer);
+      sendTimer = 0;
+      const letters = [...heldByKeyboard].sort().join('');
+      const { forward, turn } = stickCommand();
+      const stick = forward || turn ? ';' + forward.toFixed(2) + ',' + turn.toFixed(2) : '';
+      showInput();
+      if (controllerReady()) sendToController('keys:' + screenName + ':' + letters + stick);
+      lastSentAt = performance.now();
+    }
+
+    // 끄는 동안에는 STICK_SEND_MS에 한 번만 보낸다. 마지막 위치는 남은 시간이 지나면 꼭 보낸다
+    function sendStickSoon() {
+      const wait = STICK_SEND_MS - (performance.now() - lastSentAt);
+      if (wait <= 0) sendKeys();
+      else if (!sendTimer) sendTimer = setTimeout(sendKeys, wait);
+    }
+
+    function releaseStick() {
+      stickPointer = null;
+      stickOrigin = null;
+      stickX = stickY = 0;
+    }
+
+    function releaseAll() {
+      heldByKeyboard.clear();
+      releaseStick();
+    }
+
+    // 키보드: event.code를 쓰므로 한글 입력 상태에서도 같은 자리의 키로 동작한다
+    document.addEventListener('keydown', event => {
+      const letter = KEY_CODES[event.code];
+      if (!letter || event.ctrlKey || event.metaKey || event.altKey) return;
+      if (!event.repeat) { heldByKeyboard.add(letter); sendKeys(); }
+    });
+    document.addEventListener('keyup', event => {
+      const letter = KEY_CODES[event.code];
+      if (letter && heldByKeyboard.delete(letter)) sendKeys();
+    });
+
+    // 조이스틱(마우스·터치): 잡고 끄는 동안만 입력, 놓으면 가운데로 돌아가며 바로 멈춤 신호를 보낸다.
+    // 중심은 잡는 순간에 한 번만 잰다. 끄는 도중에 상태 문구가 길어져 배치가 밀려도(좁은 화면) 입력이 튀지 않는다.
+    let stickOrigin = null;  // { x, y, reach } 잡은 순간의 조이스틱 중심(px)과 손잡이가 움직일 수 있는 반지름
+
+    function moveStick(event) {
+      const { x: originX, y: originY, reach } = stickOrigin;
+      if (reach <= 0) return;
+      let x = (event.clientX - originX) / reach;
+      let y = (event.clientY - originY) / reach;
+      const length = Math.hypot(x, y);
+      if (length > 1) { x /= length; y /= length; }  // 원 밖으로 끌어도 손잡이는 가장자리에 머문다
+      stickX = x;
+      stickY = y;
+    }
+
+    stickEl.addEventListener('pointerdown', event => {
+      if (event.button !== 0 || stickPointer !== null) return;  // 조이스틱은 포인터(손가락) 하나만 잡는다
+      stickEl.setPointerCapture(event.pointerId);  // 끌다가 원 밖으로 나가도 계속 따라간다
+      stickPointer = event.pointerId;
+      const rect = stickEl.getBoundingClientRect();
+      stickOrigin = { x: rect.left + rect.width / 2, y: rect.top + rect.height / 2, reach: (rect.width - knobEl.offsetWidth) / 2 };
+      moveStick(event);
+      sendKeys();
+    });
+    stickEl.addEventListener('pointermove', event => {
+      if (event.pointerId !== stickPointer) return;
+      moveStick(event);
+      showInput();
+      sendStickSoon();
+    });
+    const letGo = event => { if (event.pointerId === stickPointer) { releaseStick(); sendKeys(); } };
+    stickEl.addEventListener('pointerup', letGo);
+    stickEl.addEventListener('pointercancel', letGo);
+    stickEl.addEventListener('lostpointercapture', letGo);
+    stickEl.addEventListener('contextmenu', event => event.preventDefault());  // 터치로 길게 눌러도 메뉴가 뜨지 않게
+
+    // 창이 가려지거나 초점을 잃으면 키를 모두 뗀다 (키를 뗀 순간을 놓쳐 계속 움직이는 일을 막는다)
+    function releaseAndSend() { releaseAll(); sendKeys(); }
+    window.addEventListener('blur', releaseAndSend);
+    document.addEventListener('visibilitychange', () => { if (document.hidden) releaseAndSend(); });
+
+    // 생존 신호: 화면이 보이는 동안 눌린 키를 주기적으로 다시 보낸다 (누르는 중에는 자주, 아니면 가끔).
+    // 탭이 가려지면 보내지 않으므로 컨트롤러가 영상 전송을 멈춘다 (보이지 않는 화면에 영상을 보내지 않는다).
+    setInterval(() => {
+      const holding = heldByKeyboard.size > 0 || stickPointer !== null;
+      if (!document.hidden && (holding || performance.now() - lastSentAt >= IDLE_HEARTBEAT_MS)) sendKeys();
+      if (mode === 'sim' && socket && socket.readyState === WebSocket.OPEN && lastFrameAt && performance.now() - lastFrameAt > STALE_MS) {
+        viewEl.dataset.stale = 'true';
+        setStatus('waiting', '영상을 기다리는 중… Webots에서 시뮬레이션이 실행 중인지, 콘솔에 오류가 없는지 확인하세요.');
+      }
+      if (lastStateAt && performance.now() - lastStateAt > STALE_MS) flowEl.dataset.stale = 'true';
+    }, HEARTBEAT_MS);
+
+    document.body.dataset.mode = 'sim';
+    initPortal();  // 포털이면 '휴대폰 카메라' 스위치를 보이고 기억한 모드로, 아니면 바로 Webots에 연결
+  </script>
+</body>
+</html>

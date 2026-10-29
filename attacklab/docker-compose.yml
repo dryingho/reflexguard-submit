@@ -1,0 +1,67 @@
+# ReflexGuard 어택랩 — 보안 테스트·패치 체험용 격리 환경 (교육용).
+#
+#   server  = 서버 티어: 관제 대시보드 + 체험·조작 서버(+Webots 대역) + 감사 프록시.
+#             바깥에는 프록시만 보인다 (8080 관제 화면, 8766 접속, 8443 체험·조작 화면).
+#   client  = 클라이언트 티어: 사용자(휠체어) 시뮬레이션 + 커넥톰 연산 서버(+통신 감사 탭, 8765).
+#
+# 버전: LAB_VERSION=before(기본, 보안 조치 전 고정본 attacklab/vulnerable/) | after(조치 후 본편).
+#   예: LAB_VERSION=after docker compose up --build
+#
+# 패치는 환경 변수로 켠다 (기본은 모두 꺼짐 = 일부러 취약). 셸에서 PATCH_*를 넣거나 attacklab/.env에 적는다.
+#   예: PATCH_REQUIRE_TOKEN=1 PATCH_TOKEN=lab-secret docker compose up --build
+#
+# 포트는 호스트의 localhost에만 묶는다 (127.0.0.1) — 랩이 사내망·인터넷에 열리지 않게.
+name: reflexguard-attacklab
+
+x-build: &build
+  context: ..
+  dockerfile: attacklab/Dockerfile
+
+services:
+  server:
+    build: *build
+    command: ["bash", "attacklab/server/entrypoint.sh"]
+    ports:
+      - "127.0.0.1:8080:8080"   # 관제 화면 (감사 프록시 경유)
+      - "127.0.0.1:8766:8766"   # 로봇·연산 서버 접속 (감사 프록시 경유)
+      - "127.0.0.1:8443:8443"   # 체험·조작 화면 (감사 프록시 경유, 랩에서는 HTTP)
+    environment:
+      LAB_VERSION: "${LAB_VERSION:-before}"   # before = 조치 전 고정본, after = 조치 후 본편
+      # 조치 후 본편(after)은 인증이 언제나 켜져 있다 — 두 티어가 같은 토큰을 쓴다 (조치 전 고정본은 이 값을 모른다)
+      REFLEXGUARD_TOKEN: "${REFLEXGUARD_TOKEN:-lab-secret}"
+      # 패치 토글 (셸이나 --env 로 넘긴다. 빈 값이면 꺼짐)
+      PATCH_REQUIRE_TOKEN: "${PATCH_REQUIRE_TOKEN:-}"
+      PATCH_TOKEN: "${PATCH_TOKEN:-}"
+      PATCH_RATE_LIMIT_RPS: "${PATCH_RATE_LIMIT_RPS:-}"
+      PATCH_MAX_BODY: "${PATCH_MAX_BODY:-}"
+      PATCH_ALLOWED_HOSTS: "${PATCH_ALLOWED_HOSTS:-}"
+      PATCH_READ_ONLY: "${PATCH_READ_ONLY:-}"
+      # 앱단 패치: 대시보드 자체가 토큰을 확인하게 (프록시를 우회해도 막히게 — 심화)
+      REFLEXGUARD_DASHBOARD_TOKEN: "${REFLEXGUARD_DASHBOARD_TOKEN:-}"
+    volumes:
+      - ./logs:/app/attacklab/logs   # 감사 로그가 호스트의 attacklab/logs로 모인다
+    networks: [lab]
+    restart: unless-stopped
+
+  client:
+    build: *build
+    command: ["bash", "attacklab/client/entrypoint.sh"]
+    ports:
+      - "127.0.0.1:8765:8765"   # 커넥톰 통신 (감사 탭 경유)
+    environment:
+      LAB_VERSION: "${LAB_VERSION:-before}"
+      REFLEXGUARD_TOKEN: "${REFLEXGUARD_TOKEN:-lab-secret}"
+      REFLEXGUARD_DASHBOARD: "server:8766"
+      REFLEXGUARD_DASHBOARD_TOKEN: "${REFLEXGUARD_DASHBOARD_TOKEN:-}"  # 패치를 켜면 '정상 클라이언트'가 통과하도록 맞춰 준다
+      LAB_SCENE: "${LAB_SCENE:-hospital_busy}"
+      LAB_CLIP: "${LAB_CLIP:-person}"
+      LAB_ROBOT_NAME: "${LAB_ROBOT_NAME:-wheelchair-01}"
+    volumes:
+      - ./logs:/app/attacklab/logs
+    depends_on: [server]
+    networks: [lab]
+    restart: unless-stopped
+
+networks:
+  lab:
+    driver: bridge

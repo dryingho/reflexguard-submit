@@ -1,0 +1,1363 @@
+<!DOCTYPE html>
+<!--
+  ReflexGuard 관제 대시보드 (dashboard/server.py가 서비스한다: http://localhost:8080)
+  화면마다 주소가 따로 있다: /live (실시간) · /analysis (기록 분석) · /trials (시험 결과) · /trials/<시험> (그 시험을 바로).
+  예전 주소(#analysis, #trials:<파일>)도 그 화면으로 연다.
+  로봇(Webots 컨트롤러)·휴대폰 체험·커넥톰 연산 서버가 보내는 상태·사건을 실시간으로 보여 주고(Server-Sent Events /api/stream),
+  버튼을 누르면 POST /api/command로 명령을 보낸다. 외부 파일(글꼴·라이브러리·CDN)을 쓰지 않는다.
+  토큰을 쓰는 서버면 주소에 ?token=<값>을 붙여 연다 (명령을 보낼 때 X-Token 헤더로 싣는다).
+-->
+<html lang="ko">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>ReflexGuard 관제</title>
+  <style>
+    :root {
+      color-scheme: light dark;
+      --bg: #0d1016; --surface: #151a22; --surface-2: #1c222c; --surface-3: #232a36; --line: #252c38; --line-strong: #3a4352;
+      --text: #e7ebf1; --muted: #8d97a7; --faint: #5f6878;
+      --accent: #4f8cff; --accent-soft: rgb(79 140 255 / 0.14);
+      --ok: #3fb67f; --warn: #e3a33a; --danger: #e5534b;
+      --radius: 12px; --side: 232px;
+      --shadow: 0 1px 2px rgb(0 0 0 / 0.25), 0 8px 24px rgb(0 0 0 / 0.18);
+    }
+    @media (prefers-color-scheme: light) {
+      :root { --bg: #f3f5f9; --surface: #ffffff; --surface-2: #f2f4f8; --surface-3: #e8ecf2; --line: #e2e7ef; --line-strong: #c8d0dc;
+              --text: #141922; --muted: #5b6576; --faint: #8a93a3; --accent: #2f6fe0; --accent-soft: rgb(47 111 224 / 0.10);
+              --shadow: 0 1px 2px rgb(16 24 40 / 0.06), 0 6px 18px rgb(16 24 40 / 0.06); }
+    }
+    * { box-sizing: border-box; }
+    body { margin: 0; background: var(--bg); color: var(--text);
+           font: 14px/1.5 "Pretendard", system-ui, -apple-system, "Segoe UI", "Noto Sans KR", sans-serif; -webkit-font-smoothing: antialiased; }
+    a { color: inherit; }
+
+    /* ----- 틀: 왼쪽 탐색 막대 + 본문 ----- */
+    .app { display: grid; grid-template-columns: var(--side) minmax(0, 1fr); min-height: 100vh; }
+    .side { position: sticky; top: 0; height: 100vh; display: flex; flex-direction: column; gap: 18px; padding: 18px 14px;
+            background: var(--surface); border-right: 1px solid var(--line); }
+    .brand { display: flex; align-items: center; gap: 10px; padding: 2px 6px 0; text-decoration: none; }
+    .brand svg { flex: none; color: var(--accent); }
+    .brand b { display: block; font-size: 15.5px; letter-spacing: -0.01em; }
+    .brand small { display: block; color: var(--muted); font-size: 11.5px; margin-top: -2px; }
+    .nav { display: grid; gap: 2px; }
+    .nav-label { color: var(--faint); font-size: 11px; font-weight: 650; letter-spacing: 0.04em; padding: 0 10px 4px; }
+    .nav a { display: flex; align-items: center; gap: 10px; padding: 8px 10px; border-radius: 8px; color: var(--muted);
+             text-decoration: none; font-weight: 550; position: relative; }
+    .nav a svg { flex: none; }
+    .nav a:hover { background: var(--surface-2); color: var(--text); }
+    .nav a[aria-current="page"] { background: var(--accent-soft); color: var(--accent); }
+    .nav a[aria-current="page"]::before { content: ""; position: absolute; left: -14px; top: 8px; bottom: 8px; width: 3px;
+                                          border-radius: 0 3px 3px 0; background: var(--accent); }
+    .nav a .path { margin-left: auto; color: var(--faint); font-size: 11px; font-weight: 450; font-family: ui-monospace, monospace; }
+    .side-foot { margin-top: auto; display: grid; gap: 10px; padding: 12px; border: 1px solid var(--line); border-radius: 10px;
+                 background: var(--surface-2); }
+    .status { font-size: 12.5px; color: var(--muted); display: flex; align-items: flex-start; gap: 7px; line-height: 1.4; }
+    .status::before { content: ""; flex: none; width: 8px; height: 8px; margin-top: 5px; border-radius: 50%; background: var(--faint); }
+    .status[data-state="live"] { color: var(--text); }
+    .status[data-state="live"]::before { background: var(--ok); box-shadow: 0 0 0 3px rgb(63 182 127 / 0.22); animation: pulse 2.4s infinite; }
+    .status[data-state="offline"] { color: var(--danger); }
+    .status[data-state="offline"]::before { background: var(--danger); }
+    @keyframes pulse { 50% { box-shadow: 0 0 0 6px rgb(63 182 127 / 0); } }
+    @media (prefers-reduced-motion: reduce) { .status[data-state="live"]::before { animation: none; } }
+    #summary { font-size: 12px; color: var(--muted); }
+    .addr { display: flex; align-items: center; gap: 6px; font: 11.5px ui-monospace, SFMono-Regular, Menlo, monospace; color: var(--muted);
+            min-width: 0; }
+    .addr span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .addr button { margin-left: auto; flex: none; white-space: nowrap; padding: 2px 8px; font-size: 11.5px; }
+
+    .content { min-width: 0; padding: 22px 28px 40px; display: grid; gap: 18px; align-content: start; max-width: 1640px; width: 100%; }
+    .page-head { display: flex; align-items: flex-end; gap: 16px; flex-wrap: wrap; }
+    .page-head h1 { font-size: 22px; margin: 0; letter-spacing: -0.02em; }
+    .page-head p { margin: 2px 0 0; color: var(--muted); font-size: 13px; }
+    .page-head .clock { margin-left: auto; color: var(--muted); font-size: 13px; font-variant-numeric: tabular-nums; }
+    .page { display: grid; gap: 18px; min-width: 0; }
+    .page[hidden], #analysis [hidden], #trials [hidden] { display: none; }
+
+    /* ----- 공통 부품 ----- */
+    h2 { font-size: 14.5px; margin: 0; letter-spacing: -0.01em; }
+    .card { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 14px 16px;
+            display: grid; gap: 12px; min-width: 0; box-shadow: var(--shadow); }
+    .card > h2 { margin-bottom: -2px; }
+    .muted { color: var(--muted); font-size: 12px; }
+    .empty { color: var(--muted); font-size: 13px; padding: 18px; margin: 0; border: 1px dashed var(--line-strong); border-radius: var(--radius);
+             text-align: center; grid-column: 1 / -1; }
+    .chip { font-size: 11.5px; font-weight: 600; padding: 2px 9px; border-radius: 999px; background: var(--surface-2);
+            border: 1px solid var(--line); white-space: nowrap; }
+    .chip[data-tone="ok"] { color: var(--ok); border-color: rgb(63 182 127 / 0.45); background: rgb(63 182 127 / 0.10); }
+    .chip[data-tone="warn"] { color: var(--warn); border-color: rgb(227 163 58 / 0.45); background: rgb(227 163 58 / 0.10); }
+    .chip[data-tone="danger"] { color: #fff; background: var(--danger); border-color: var(--danger); }
+    .chip[data-tone="accent"] { color: var(--accent); border-color: rgb(79 140 255 / 0.45); background: var(--accent-soft); }
+    button, select { font: inherit; font-size: 13px; padding: 6px 11px; border-radius: 8px; border: 1px solid var(--line-strong);
+                     background: var(--surface-2); color: var(--text); cursor: pointer; }
+    button:hover:not(:disabled), select:hover:not(:disabled) { border-color: var(--accent); }
+    button:focus-visible, select:focus-visible, .nav a:focus-visible { outline: 2px solid var(--accent); outline-offset: 2px; }
+    button:disabled, select:disabled { opacity: 0.5; cursor: not-allowed; }
+    button.danger { background: var(--danger); border-color: var(--danger); color: #fff; font-weight: 650; }
+    button[aria-pressed="true"] { border-color: var(--accent); color: var(--accent); background: var(--accent-soft); }
+    .controls { display: flex; flex-wrap: wrap; gap: 6px; align-items: center; }
+    table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+    th, td { text-align: left; padding: 6px 8px; border-bottom: 1px solid var(--line); font-variant-numeric: tabular-nums; }
+    th { color: var(--muted); font-weight: 600; font-size: 12px; position: sticky; top: 0; background: var(--surface); }
+    tbody tr:hover td { background: var(--surface-2); }
+    .log { max-height: 420px; overflow: auto; }
+    .log td:first-child { white-space: nowrap; color: var(--muted); }
+    .log tr[data-kind="collision"] td { color: var(--danger); }
+    .log tr[data-kind="arrival"] td { color: var(--ok); }
+    .log tr[data-kind="command"] td:last-child { color: var(--accent); }
+    #log tr.past { opacity: 0.55; }
+    .log td.who { white-space: nowrap; max-width: 130px; overflow: hidden; text-overflow: ellipsis; color: var(--muted); }  /* 지난 세션 기록 (관제 서버를 다시 켤 때 기록 파일에서 읽어 온 것) */
+    .filters { display: flex; gap: 6px; flex-wrap: wrap; }
+    .filters button { font-size: 12px; padding: 4px 10px; border-radius: 999px; }
+    .toast { position: fixed; right: 18px; bottom: 18px; z-index: 6; background: var(--surface); border: 1px solid var(--line-strong);
+             border-radius: 10px; padding: 10px 14px; font-size: 13px; box-shadow: var(--shadow); }
+
+    /* ----- 실시간: 요약 숫자 + 카드 + 오른쪽 사건 기록 ----- */
+    .kpis { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 168px), 1fr)); }
+    .kpi { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px;
+           box-shadow: var(--shadow); display: grid; gap: 2px; }
+    .kpi span { color: var(--muted); font-size: 12px; font-weight: 550; }
+    .kpi b { font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .kpi small { color: var(--faint); font-size: 11.5px; }
+    .kpi[data-tone="danger"] b { color: var(--danger); }
+    .kpi[data-tone="ok"] b { color: var(--ok); }
+    .live-grid { display: grid; gap: 18px; grid-template-columns: minmax(0, 1fr) minmax(320px, 400px); align-items: start; }
+    .live-main { display: grid; gap: 22px; min-width: 0; }
+    .live-side { position: sticky; top: 22px; max-height: calc(100vh - 44px); grid-template-rows: auto auto minmax(0, 1fr); }
+    .live-side .log { max-height: none; min-height: 0; }
+    .section { display: grid; gap: 10px; }
+    .section-head { display: flex; align-items: center; gap: 8px; }
+    .section-head small { color: var(--muted); font-weight: 500; font-size: 12.5px; }
+    .section-head .count { font-size: 11.5px; font-weight: 650; padding: 1px 8px; border-radius: 999px; background: var(--surface-3); color: var(--muted); }
+    .grid { display: grid; gap: 14px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 440px), 1fr)); }
+    .card[data-connected="false"] { opacity: 0.55; box-shadow: none; }
+    .card-head { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .card-head b { font-size: 15px; letter-spacing: -0.01em; margin-right: 2px; }
+    .card .peer { margin-top: -8px; }
+    .kv { display: grid; grid-template-columns: auto 1fr; gap: 4px 14px; font-size: 13px; margin: 0; padding-top: 10px;
+          border-top: 1px solid var(--line); }
+    .kv dt { color: var(--muted); }
+    .kv dd { margin: 0; font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+    .gauge { display: grid; gap: 6px; }
+    .gauge .muted b { color: var(--text); font-size: 13px; }
+    .bar { height: 8px; border-radius: 999px; background: var(--surface-3); position: relative; overflow: hidden; }
+    .bar i { position: absolute; inset: 0 auto 0 0; width: 0; border-radius: 999px; background: var(--ok); transition: width 120ms; }
+    .bar[data-level="warn"] i { background: var(--warn); }
+    .bar[data-level="danger"] i { background: var(--danger); }
+    .views { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    canvas { width: 100%; background: var(--surface-2); border: 1px solid var(--line); border-radius: 8px; display: block; }
+    .card > .controls:not(:first-child) { padding-top: 10px; border-top: 1px solid var(--line); }  /* 카드 아래 명령 줄 */
+
+    @media (max-width: 1280px) {
+      .live-grid { grid-template-columns: minmax(0, 1fr); }
+      .live-side { position: static; max-height: none; }
+      .live-side .log { max-height: 460px; }
+    }
+    @media (max-width: 900px) {
+      .app { grid-template-columns: minmax(0, 1fr); }
+      .side { position: sticky; z-index: 3; height: auto; flex-direction: row; flex-wrap: wrap; align-items: center; gap: 8px 14px;
+              padding: 10px 16px; border-right: 0; border-bottom: 1px solid var(--line); }
+      .nav { grid-auto-flow: column; overflow-x: auto; }
+      .nav-label, .nav a .path, .side-foot #summary, .side-foot .addr { display: none; }
+      .nav a[aria-current="page"]::before { display: none; }
+      .side-foot { margin: 0 0 0 auto; padding: 0; border: 0; background: none; }
+      .content { padding: 16px; }
+    }
+    @media (max-width: 520px) { .views { grid-template-columns: 1fr; } .content { padding: 12px; } }
+
+    .tiles { display: grid; gap: 12px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 170px), 1fr)); }
+    .tile { background: var(--surface); border: 1px solid var(--line); border-radius: var(--radius); padding: 12px 14px; box-shadow: var(--shadow); }
+    .tile b { display: block; font-size: 26px; font-weight: 700; letter-spacing: -0.02em; font-variant-numeric: tabular-nums; line-height: 1.2; }
+    .tile span { color: var(--muted); font-size: 12.5px; }
+    /* ----- 기록 분석: 차트 색 (참조 팔레트의 앞 세 칸 — 지도 위 점처럼 모든 쌍이 맞닿아도 구분되는 수) ----- */
+    #analysis {
+      --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70;   /* 정지 · 회피 · 감속·옆벽 피하기 (어두운 화면) */
+      --critical: #e5534b;                                            /* 충돌 (상태 색 — ✕ 모양과 함께) */
+      --map-wall: #3a4250; --map-floor: #252b35; --map-goal: #2c5a3f; --grid: #2e3542;
+    }
+    @media (prefers-color-scheme: light) {
+      #analysis { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --critical: #d03b3b;
+                  --map-wall: #b9c0cc; --map-floor: #f3f5f8; --map-goal: #cfead8; --grid: #dde2ea; }
+    }
+    /* ----- 시험 결과: 방식마다 색 하나 (커넥톰 · 거리 센서 · 물체 인식 = 앞 세 칸, 사람 혼자 = 회색 — 비교의 바탕) ----- */
+    #trials { --series-1: #3987e5; --series-2: #d95926; --series-3: #199e70; --series-base: #8b93a1;
+              --needless: #4a5262; --grid: #2e3542; }
+    @media (prefers-color-scheme: light) {
+      #trials { --series-1: #2a78d6; --series-2: #eb6834; --series-3: #1baf7a; --series-base: #9aa1ad;
+                --needless: #c9ced8; --grid: #dde2ea; }
+    }
+    #tr-tiles { grid-template-columns: repeat(auto-fill, minmax(min(100%, 250px), 1fr)); }
+    .method-tile i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 6px; vertical-align: 0; }
+    .method-tile .name { color: var(--text); font-size: 13px; font-weight: 600; }
+    .method-tile small { display: block; color: var(--muted); font-size: 12px; line-height: 1.5; }
+    .conditions { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+    .conditions span { border: 1px solid var(--line); border-radius: 999px; padding: 2px 10px; font-size: 12.5px; color: var(--muted); }
+    .conditions span.on { border-color: var(--warn); color: var(--warn); }
+    #tr-runs tr { cursor: pointer; }
+    #tr-runs tr[aria-selected="true"] td { background: var(--surface-2); }
+    #tr-runs td.num { font-variant-numeric: tabular-nums; white-space: nowrap; }
+    .charts { display: grid; gap: 16px; grid-template-columns: repeat(auto-fill, minmax(min(100%, 520px), 1fr)); }
+    .chart svg { width: 100%; height: auto; display: block; overflow: visible; }
+    .chart .axis, .chart .label { fill: var(--muted); font-size: 11px; }
+    .chart .value { fill: var(--text); font-size: 11.5px; font-variant-numeric: tabular-nums; }
+    .chart .gridline { stroke: var(--grid); stroke-width: 1; }
+    .legend { display: flex; flex-wrap: wrap; gap: 12px; font-size: 12.5px; color: var(--muted); }
+    .legend i { display: inline-block; width: 10px; height: 10px; border-radius: 3px; margin-right: 5px; vertical-align: -1px; }
+    .legend i.x { width: auto; height: auto; border-radius: 0; font-style: normal; font-weight: 700; color: var(--critical); }
+    .tip { position: fixed; pointer-events: none; z-index: 5; background: var(--surface); border: 1px solid var(--line-strong);
+           border-radius: 6px; padding: 6px 9px; font-size: 12.5px; box-shadow: 0 4px 16px rgb(0 0 0 / 0.3); max-width: 280px; }
+    .tip b { display: block; margin-bottom: 2px; }
+    .hit { fill: transparent; cursor: default; }
+    .seg:hover, .dot:hover { filter: brightness(1.15); }
+  </style>
+</head>
+<body>
+  <div class="app">
+    <aside class="side">
+      <a class="brand" href="/live" data-tab="live">
+        <svg width="30" height="30" viewBox="0 0 32 32" fill="none" aria-hidden="true">
+          <rect x="1" y="1" width="30" height="30" rx="9" fill="currentColor" opacity="0.14"/>
+          <circle cx="16" cy="16" r="3.2" fill="currentColor"/>
+          <path d="M10.5 10.5a7.8 7.8 0 0 0 0 11M21.5 10.5a7.8 7.8 0 0 1 0 11" stroke="currentColor" stroke-width="2" stroke-linecap="round"/>
+          <path d="M7 7a12.7 12.7 0 0 0 0 18M25 7a12.7 12.7 0 0 1 0 18" stroke="currentColor" stroke-width="2" stroke-linecap="round" opacity="0.5"/>
+        </svg>
+        <span><b>ReflexGuard</b><small>관제 대시보드</small></span>
+      </a>
+      <nav class="nav" aria-label="화면">
+        <div class="nav-label">화면</div>
+        <a href="/live" data-tab="live" id="tab-live"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12h4l3-8 4 16 3-8h4"/></svg>실시간<span class="path">/live</span></a>
+        <a href="/analysis" data-tab="analysis" id="tab-analysis"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M4 20V10M10 20V4M16 20v-7M22 20H2"/></svg>기록 분석<span class="path">/analysis</span></a>
+        <a href="/trials" data-tab="trials" id="tab-trials"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M5 21V4M5 4h11l-2 4 2 4H5"/></svg>시험 결과<span class="path">/trials</span></a>
+      </nav>
+      <div class="side-foot">
+        <span class="status" id="status" data-state="connecting">대시보드 서버에 연결하는 중…</span>
+        <span id="summary"></span>
+        <div class="addr" title="이 화면의 주소 (토큰은 빼고)"><span id="addr"></span><button type="button" id="addr-copy">복사</button></div>
+      </div>
+    </aside>
+
+    <div class="content">
+      <header class="page-head">
+        <div><h1 id="page-title">실시간 관제</h1><p id="page-sub">로봇·휴대폰 체험·커넥톰 연산 서버의 지금 상태와 사건</p></div>
+        <span class="clock" id="clock"></span>
+      </header>
+
+      <section class="page" id="live" aria-labelledby="page-title">
+        <div class="kpis" id="kpis"></div>
+        <div class="live-grid">
+          <div class="live-main">
+            <section class="section">
+              <div class="section-head"><h2>로봇 <small>Webots</small></h2><span class="count" id="robots-count">0</span></div>
+              <div class="grid" id="robots"><p class="empty">접속한 로봇이 없습니다. Webots를 REFLEXGUARD_DASHBOARD 주소와 함께 실행하세요.</p></div>
+            </section>
+            <section class="section">
+              <div class="section-head"><h2>휴대폰 체험</h2><span class="count" id="phones-count">0</span></div>
+              <div class="grid" id="phones"><p class="empty">체험 중인 휴대폰이 없습니다. 조작 화면에서 '휴대폰 카메라'를 켜면 기기마다 여기 보입니다.</p></div>
+            </section>
+            <section class="section">
+              <div class="section-head"><h2>커넥톰 연산 서버</h2><span class="count" id="brains-count">0</span></div>
+              <div class="grid" id="brains"><p class="empty">접속한 연산 서버가 없습니다.</p></div>
+            </section>
+          </div>
+          <aside class="card live-side" aria-label="사건 기록">
+            <div class="section-head"><h2>사건 기록</h2><span class="count" id="event-count">0</span></div>
+            <div class="filters" id="filters">
+              <button type="button" data-filter="all" aria-pressed="true">전체</button>
+              <button type="button" data-filter="reflex" aria-pressed="false">회피 반사</button>
+              <button type="button" data-filter="collision" aria-pressed="false">충돌</button>
+              <button type="button" data-filter="arrival" aria-pressed="false">도착</button>
+              <button type="button" data-filter="command" aria-pressed="false">명령</button>
+              <button type="button" data-filter="connection" aria-pressed="false">접속</button>
+            </div>
+            <div class="log"><table><thead><tr><th>시각</th><th>보낸 곳</th><th>내용</th></tr></thead><tbody id="log"></tbody></table></div>
+          </aside>
+        </div>
+      </section>
+
+      <section class="page" id="analysis" aria-labelledby="page-title" hidden>
+    <section class="card">
+      <div class="controls">
+        <label>기간 <select id="an-range">
+          <option value="all">전체</option><option value="1">오늘</option><option value="7">최근 7일</option><option value="30">최근 30일</option>
+        </select></label>
+        <label>맵 <select id="an-map"><option value="all">전체</option></select></label>
+        <button type="button" id="an-refresh">새로 읽기</button>
+        <button type="button" id="an-table-toggle" aria-pressed="false">표로 보기</button>
+        <span class="muted" id="an-note"></span>
+      </div>
+    </section>
+    <div class="tiles" id="an-tiles"></div>
+    <div class="charts">
+      <section class="card chart">
+        <h2>날짜별 회피 반사 작동</h2>
+        <div class="legend" id="an-legend-days"></div>
+        <div id="an-days"></div>
+      </section>
+      <section class="card chart">
+        <h2>맵별 도착당 평균 커넥톰 개입</h2>
+        <div id="an-arrivals"></div>
+      </section>
+      <section class="card chart" style="grid-column: 1 / -1">
+        <h2>개입 위치 지도 <select id="an-where" aria-label="지도에 보일 맵"></select></h2>
+        <div class="legend" id="an-legend-map"></div>
+        <div id="an-map-plot"></div>
+        <p class="muted">점 하나가 회피 반사 작동 한 번(시작한 자리), ✕는 충돌한 자리입니다. 점에 올리면 자세히 나옵니다.</p>
+      </section>
+    </div>
+    <section class="card" id="an-table-card" hidden>
+      <h2>회피 반사 작동 목록 <span class="muted" id="an-table-count"></span></h2>
+      <div class="log"><table><thead><tr><th>시각</th><th>맵</th><th>자리 (x, y)</th><th>가장 센 단계</th><th>최대 위험도</th><th>길이</th></tr></thead>
+        <tbody id="an-table"></tbody></table></div>
+    </section>
+      </section>
+
+      <section class="page" id="trials" aria-labelledby="page-title" hidden>
+    <!-- 거리 센서→커넥톰: 커넥톰과 같은 파랑(판단이 커넥톰)에 45° 빗금(위험 인식이 거리 센서) — 넷째 색을 더하면
+         주황·노랑처럼 서로 헷갈리는 쌍이 생겨, 색 대신 무늬로 가른다 -->
+    <svg width="0" height="0" style="position:absolute" aria-hidden="true"><defs>
+      <pattern id="hatch-range-connectome" patternUnits="userSpaceOnUse" width="5" height="5" patternTransform="rotate(45)">
+        <rect width="5" height="5" style="fill:var(--series-1)"></rect><rect width="2" height="5" style="fill:var(--surface)"></rect>
+      </pattern></defs></svg>
+    <section class="card">
+      <div class="controls">
+        <label>시험 <select id="tr-run"></select></label>
+        <button type="button" id="tr-refresh">새로 읽기</button>
+        <button type="button" id="tr-table-toggle" aria-pressed="false">표로 보기</button>
+        <span class="muted" id="tr-note"></span>
+      </div>
+      <div class="conditions" id="tr-conditions"></div>
+    </section>
+    <div class="tiles" id="tr-tiles"></div>
+    <div class="charts">
+      <section class="card chart">
+        <h2>맵별 도착</h2>
+        <div class="legend" id="tr-legend-maps"></div>
+        <div id="tr-maps"></div>
+      </section>
+      <section class="card chart">
+        <h2>개입: 필요했던 것과 헛개입 <span class="muted">(도착한 판)</span></h2>
+        <div class="legend" id="tr-legend-needless"></div>
+        <div id="tr-needless"></div>
+        <p class="muted">헛개입: 개입이 시작될 때 사용자 명령을 1.5초 그대로 두어도 부딪히지 않았을 개입.</p>
+      </section>
+    </div>
+    <section class="card">
+      <h2>시험마다 도착 / 충돌 <span class="muted">(줄을 누르면 그 시험을 봅니다)</span></h2>
+      <div class="log"><table><thead id="tr-runs-head"></thead><tbody id="tr-runs"></tbody></table></div>
+    </section>
+    <section class="card" id="tr-table-card" hidden>
+      <h2>판마다 <span class="muted" id="tr-table-count"></span></h2>
+      <div class="log"><table><thead><tr><th>맵</th><th>방식</th><th>반응</th><th>대기</th><th>결과</th><th>시간</th><th>개입 (헛)</th><th>자세히</th></tr></thead>
+        <tbody id="tr-table"></tbody></table></div>
+    </section>
+      </section>
+    </div>
+  </div>
+  <div class="tip" id="tip" hidden></div>
+  <div class="toast" id="toast" hidden></div>
+
+  <script>
+    'use strict';
+    const byId = id => document.getElementById(id);
+    const token = new URLSearchParams(location.search).get('token') || '';
+    const agents = new Map();          // id → 마지막 정보 (hello 포함)
+    const history = new Map();         // id → [[시각, 위험도], …] (최근 60초)
+    const events = [];
+    let filter = 'all';
+    const STAGES = {
+      safe: ['안전', 'ok'], slow: ['감속', 'warn'], avoid: ['회피', 'accent'], return: ['복귀', 'accent'],
+      stop: ['정지', 'danger'], manual: ['수동 주행', 'warn'], override: ['개입', 'accent'], veer: ['옆벽 피하기', 'accent'],
+    };
+    const SENSORS = { camera: '위험 인식 카메라 → 커넥톰', range: '위험 인식 거리 센서 → 커넥톰' };
+    const SIGNALS = { STOP: '정지', LEFT: '왼쪽으로', RIGHT: '오른쪽으로', NONE: '없음' };
+    const TARGETS = { wall: '벽', adult: '사람', child: '어린이', ball: '공' };
+    const fmt = (v, d = 2) => (typeof v === 'number' && isFinite(v) ? v.toFixed(d) : '—');
+    const el = (tag, props = {}, ...children) => {
+      const node = Object.assign(document.createElement(tag), props);
+      node.append(...children.filter(c => c !== null && c !== undefined));
+      return node;
+    };
+
+    // ----- 화면과 주소: /live · /analysis · /trials · /trials/<시험> (예전 #analysis · #trials:<파일>도 받는다) -----
+    const PAGES = {
+      live: ['실시간 관제', '로봇·휴대폰 체험·커넥톰 연산 서버의 지금 상태와 사건'],
+      analysis: ['기록 분석', '관제 기록 파일 전부에서 모은 회피 반사 작동·충돌·도착'],
+      trials: ['시험 결과', '도착 시험(tools/goal_trials.py)의 방식별 도착·충돌·헛개입'],
+    };
+    const runSlug = file => String(file || '').replace(/^trials_/, '').replace(/\.json$/, '');  // trials_<시각>.json → <시각>
+    let currentTab = null;
+    function routeFromLocation() {
+      if (location.hash === '#analysis') return { tab: 'analysis', run: null };
+      if (location.hash.startsWith('#trials')) {
+        return { tab: 'trials', run: location.hash.startsWith('#trials:') ? decodeURIComponent(location.hash.slice(8)) : null };
+      }
+      const [first, second] = location.pathname.split('/').filter(Boolean);
+      if (first === 'analysis') return { tab: 'analysis', run: null };
+      if (first === 'trials') return { tab: 'trials', run: second ? decodeURIComponent(second) : null };
+      return { tab: 'live', run: null };
+    }
+    const pathFor = (tab, run) => (tab === 'trials' && run ? `/trials/${encodeURIComponent(runSlug(run))}` : `/${tab}`);
+    function setAddress(path, push) {  // 주소창: 경로만 바꾸고 ?token=은 그대로 둔다 (해시는 지운다)
+      const target = path + location.search;
+      if (location.pathname + location.search + location.hash === target) return;
+      if (push) window.history.pushState(null, '', target); else window.history.replaceState(null, '', target);
+      showAddress();
+    }
+    function showAddress() { byId('addr').textContent = location.host + location.pathname; }
+    function showTab(name, push = false) {
+      currentTab = name;
+      for (const tab of Object.keys(PAGES)) {
+        byId(tab).hidden = tab !== name;
+        const link = byId(`tab-${tab}`);
+        if (tab === name) link.setAttribute('aria-current', 'page'); else link.removeAttribute('aria-current');
+      }
+      [byId('page-title').textContent, byId('page-sub').textContent] = PAGES[name];
+      document.title = `${PAGES[name][0]} · ReflexGuard 관제`;
+      const run = name === 'trials' && trials.data ? (trials.data.runs[trials.index] || {}).file : routeFromLocation().run;
+      setAddress(pathFor(name, name === 'trials' ? run : null), push);
+      if (name === 'analysis' && !analysis.data) loadAnalysis();
+      if (name === 'trials' && !trials.data) loadTrials();
+    }
+    for (const link of document.querySelectorAll('a[data-tab]')) {
+      link.href = link.getAttribute('href') + location.search;  // 새 탭으로 열어도 토큰이 이어지게
+      link.addEventListener('click', e => {
+        if (e.metaKey || e.ctrlKey || e.shiftKey || e.button !== 0) return;  // 새 창·새 탭으로 열기는 브라우저에 맡긴다
+        e.preventDefault();
+        showTab(link.dataset.tab, true);
+      });
+    }
+    window.addEventListener('popstate', () => {  // 뒤로·앞으로
+      const route = routeFromLocation();
+      if (route.tab === 'trials' && route.run && trials.data) selectRun(route.run);
+      showTab(route.tab);
+    });
+    byId('addr-copy').addEventListener('click', async () => {
+      const url = location.origin + location.pathname;  // 토큰은 빼고 복사한다
+      try { await navigator.clipboard.writeText(url); toast('주소를 복사했습니다: ' + url); }
+      catch (error) { toast('복사하지 못했습니다. 주소창에서 복사하세요: ' + url, 5000); }
+    });
+
+    // ----- 기록 분석 (GET /api/analysis — 모든 기록 파일의 반사 작동·충돌·도착) -----
+    const SVG_NS = 'http://www.w3.org/2000/svg';
+    const svg = (tag, attrs = {}, ...children) => {
+      const node = document.createElementNS(SVG_NS, tag);
+      for (const [k, v] of Object.entries(attrs)) node.setAttribute(k, v);
+      node.append(...children.filter(c => c !== null && c !== undefined));
+      return node;
+    };
+    // 단계 묶음: 가장 센 단계로 세 묶음 (색 셋 — 지도 위 점처럼 모든 쌍이 맞닿아도 구분되는 수까지만)
+    const GROUPS = [
+      { key: 'stop', name: '정지', color: 'var(--series-1)' },
+      { key: 'avoid', name: '회피', color: 'var(--series-2)' },
+      { key: 'other', name: '감속·옆벽 피하기', color: 'var(--series-3)' },
+    ];
+    const groupOf = stage => (stage === 'stop' ? 'stop' : stage === 'avoid' || stage === 'return' ? 'avoid' : 'other');
+    const analysis = { data: null, showTable: false };
+
+    async function loadAnalysis() {
+      byId('an-note').textContent = '기록을 읽는 중…';
+      try {
+        const response = await fetch('/api/analysis');
+        analysis.data = await response.json();
+        const maps = Object.keys(analysis.data.maps || {});
+        const used = new Set([...analysis.data.episodes, ...analysis.data.arrivals, ...analysis.data.collisions].map(r => r.map));
+        const choices = maps.filter(m => used.has(m));
+        const current = byId('an-map').value;
+        byId('an-map').replaceChildren(el('option', { value: 'all', textContent: '전체' }),
+          ...choices.map(m => el('option', { value: m, textContent: analysis.data.maps[m].title || m })));
+        byId('an-map').value = choices.includes(current) ? current : 'all';
+        byId('an-note').textContent = '';
+        renderAnalysis();
+      } catch (error) {
+        byId('an-note').textContent = '기록을 읽지 못했습니다.';
+      }
+    }
+    byId('an-refresh').addEventListener('click', loadAnalysis);
+    byId('an-range').addEventListener('change', renderAnalysis);
+    byId('an-map').addEventListener('change', renderAnalysis);
+    byId('an-where').addEventListener('change', () => renderMapPlot(filtered()));
+    byId('an-table-toggle').addEventListener('click', () => {
+      analysis.showTable = !analysis.showTable;
+      byId('an-table-toggle').setAttribute('aria-pressed', String(analysis.showTable));
+      byId('an-table-card').hidden = !analysis.showTable;
+    });
+
+    function filtered() {
+      const range = byId('an-range').value, game = byId('an-map').value;
+      const since = range === 'all' ? '' : (() => {
+        const d = new Date(); d.setHours(0, 0, 0, 0); d.setDate(d.getDate() - (Number(range) - 1));
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+      })();
+      const keep = r => r.time >= since && (game === 'all' || r.map === game);
+      const data = analysis.data;
+      return { episodes: data.episodes.filter(keep), collisions: data.collisions.filter(keep), arrivals: data.arrivals.filter(keep) };
+    }
+
+    function renderAnalysis() {
+      if (!analysis.data) return;
+      const view = filtered();
+      renderTiles(view);
+      renderDays(view.episodes);
+      renderArrivals(view.arrivals);
+      // 지도: 맵을 하나 골랐으면 그 맵, 아니면 작동이 가장 많은 맵
+      const counts = {};
+      for (const e of view.episodes) counts[e.map] = (counts[e.map] || 0) + 1;
+      const maps = Object.keys(analysis.data.maps).filter(m => counts[m] || view.collisions.some(c => c.map === m));
+      const chosen = byId('an-map').value !== 'all' ? byId('an-map').value
+        : (maps.includes(byId('an-where').value) ? byId('an-where').value : maps.sort((a, b) => (counts[b] || 0) - (counts[a] || 0))[0]);
+      byId('an-where').replaceChildren(...maps.map(m => el('option', { value: m, textContent: analysis.data.maps[m].title || m })));
+      byId('an-where').disabled = byId('an-map').value !== 'all';
+      if (chosen) byId('an-where').value = chosen;
+      renderMapPlot(view);
+      renderTable(view.episodes);
+    }
+
+    function renderTiles(view) {
+      const interventions = view.arrivals.reduce((sum, a) => sum + (a.interventions || 0), 0);
+      const tiles = [
+        [view.episodes.length, '회피 반사 작동'],
+        [view.collisions.length, '충돌'],
+        [view.arrivals.length, '도착'],
+        [view.arrivals.length ? (interventions / view.arrivals.length).toFixed(1) : '—', '도착당 평균 개입'],
+      ];
+      byId('an-tiles').replaceChildren(...tiles.map(([value, label]) =>
+        el('div', { className: 'tile' }, el('b', { textContent: String(value) }), el('span', { textContent: label }))));
+    }
+
+    function legend(target, withCollision = false) {
+      byId(target).replaceChildren(...GROUPS.map(g => el('span', {}, el('i', { style: `background:${g.color}` }), g.name)),
+        ...(withCollision ? [el('span', {}, el('i', { className: 'x', textContent: '✕' }), '충돌')] : []));
+    }
+
+    function showTip(event, html) {
+      const tip = byId('tip');
+      tip.replaceChildren(...html);
+      tip.hidden = false;
+      const x = Math.min(event.clientX + 14, window.innerWidth - tip.offsetWidth - 8);
+      const y = Math.min(event.clientY + 14, window.innerHeight - tip.offsetHeight - 8);
+      tip.style.left = `${x}px`; tip.style.top = `${y}px`;
+    }
+    const hideTip = () => { byId('tip').hidden = true; };
+    const hover = (node, lines) => {
+      node.addEventListener('pointermove', e => showTip(e, lines()));
+      node.addEventListener('pointerleave', hideTip);
+      return node;
+    };
+
+    // 날짜별 쌓은 막대 (세로 축 하나: 작동 수)
+    function renderDays(episodes) {
+      legend('an-legend-days');
+      const byDay = new Map();
+      for (const e of episodes) {
+        const day = e.time.slice(0, 10);
+        if (!byDay.has(day)) byDay.set(day, { stop: 0, avoid: 0, other: 0 });
+        byDay.get(day)[groupOf(e.stage)] += 1;
+      }
+      const days = [...byDay.keys()].sort();
+      const box = byId('an-days');
+      if (!days.length) { box.replaceChildren(el('p', { className: 'empty', textContent: '이 기간에는 작동이 없습니다.' })); return; }
+      const W = 560, H = 220, left = 36, bottom = 24, top = 8;
+      const max = Math.max(...days.map(d => GROUPS.reduce((s, g) => s + byDay.get(d)[g.key], 0)));
+      const step = niceStep(max), yMax = Math.ceil(max / step) * step;
+      const y = v => top + (H - top - bottom) * (1 - v / yMax);
+      const band = (W - left) / days.length, barW = Math.min(36, band * 0.6);
+      const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '날짜별 회피 반사 작동 수' });
+      for (let v = 0; v <= yMax; v += step) {
+        root.append(svg('line', { class: 'gridline', x1: left, x2: W, y1: y(v), y2: y(v) }),
+                    svg('text', { class: 'axis', x: left - 6, y: y(v) + 4, 'text-anchor': 'end' }, String(v)));
+      }
+      days.forEach((day, i) => {
+        const cx = left + band * (i + 0.5), counts = byDay.get(day);
+        const total = GROUPS.reduce((s, g) => s + counts[g.key], 0);
+        let base = 0;
+        GROUPS.forEach((g, gi) => {
+          const n = counts[g.key];
+          if (!n) return;
+          const y0 = y(base), y1 = y(base + n);
+          const isTop = !GROUPS.slice(gi + 1).some(h => counts[h.key]);
+          // 맨 위 칸만 위쪽 모서리를 둥글게, 칸 사이는 2px 띄운다
+          const h = Math.max(1, y0 - y1 - 2);
+          const seg = svg('path', { class: 'seg', fill: g.color, d: roundedTop(cx - barW / 2, y1, barW, h, isTop ? 4 : 0) });
+          root.append(hover(seg, () => [el('b', { textContent: day }), `${g.name} ${n}번 · 합계 ${total}번`]));
+          base += n;
+        });
+        root.append(svg('text', { class: 'axis', x: cx, y: H - 6, 'text-anchor': 'middle' }, day.slice(5)));
+        if (days.length <= 14) root.append(svg('text', { class: 'value', x: cx, y: y(total) - 5, 'text-anchor': 'middle' }, String(total)));
+      });
+      box.replaceChildren(root);
+    }
+    function niceStep(max) {
+      const raw = Math.max(1, max) / 4, power = 10 ** Math.floor(Math.log10(raw));
+      return [1, 2, 5, 10].map(m => m * power).find(s => s >= raw);
+    }
+    function roundedTop(x, y, w, h, r) {
+      r = Math.min(r, w / 2, h);
+      return `M${x},${y + h} V${y + r} Q${x},${y} ${x + r},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h} Z`;
+    }
+
+    // 맵별 도착당 평균 개입 (가로 막대, 한 계열)
+    function renderArrivals(arrivals) {
+      const box = byId('an-arrivals');
+      const byMap = new Map();
+      for (const a of arrivals) {
+        if (!byMap.has(a.map)) byMap.set(a.map, []);
+        byMap.get(a.map).push(a);
+      }
+      const rows = [...byMap.entries()].map(([map, list]) => ({
+        map, count: list.length,
+        mean: list.reduce((s, a) => s + (a.interventions || 0), 0) / list.length,
+        time: list.reduce((s, a) => s + (a.elapsed || 0), 0) / list.length,
+      })).sort((a, b) => b.mean - a.mean);
+      if (!rows.length) { box.replaceChildren(el('p', { className: 'empty', textContent: '이 기간에는 도착 기록이 없습니다.' })); return; }
+      const W = 560, rowH = 30, left = 110, right = 120, H = rows.length * rowH + 6;
+      const max = Math.max(...rows.map(r => r.mean), 1);
+      const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '맵별 도착당 평균 커넥톰 개입' });
+      rows.forEach((r, i) => {
+        const yy = i * rowH + 6, w = Math.max(2, (W - left - right) * r.mean / max);
+        const title = (analysis.data.maps[r.map] || {}).title || r.map || '(알 수 없음)';
+        root.append(svg('text', { class: 'label', x: left - 8, y: yy + 15, 'text-anchor': 'end' }, title));
+        const bar = svg('path', { class: 'seg', fill: 'var(--series-1)', d: roundedRight(left, yy + 4, w, 16, 4) });
+        root.append(hover(bar, () => [el('b', { textContent: title }),
+          `도착 ${r.count}번 · 평균 개입 ${r.mean.toFixed(1)}번 · 평균 ${r.time.toFixed(0)}초`]));
+        root.append(svg('text', { class: 'value', x: left + w + 6, y: yy + 16 }, `${r.mean.toFixed(1)}번 (도착 ${r.count})`));
+      });
+      box.replaceChildren(root);
+    }
+    function roundedRight(x, y, w, h, r) {
+      r = Math.min(r, h / 2, w);
+      return `M${x},${y} H${x + w - r} Q${x + w},${y} ${x + w},${y + r} V${y + h - r} Q${x + w},${y + h} ${x + w - r},${y + h} H${x} Z`;
+    }
+
+    // 개입 위치 지도: 맵 칸 위에 작동한 자리(점, 단계 묶음 색)와 충돌한 자리(✕)
+    function renderMapPlot(view) {
+      legend('an-legend-map', true);
+      const box = byId('an-map-plot');
+      const name = byId('an-map').value !== 'all' ? byId('an-map').value : byId('an-where').value;
+      const shape = (analysis.data.maps || {})[name];
+      if (!shape) { box.replaceChildren(el('p', { className: 'empty', textContent: '보여 줄 맵이 없습니다.' })); return; }
+      const rows = shape.rows, cols = Math.max(...rows.map(r => r.length));
+      const root = svg('svg', { viewBox: `0 0 ${cols} ${rows.length}`, role: 'img', 'aria-label': `${shape.title || name} 개입 위치`,
+                                style: `max-height: 70vh`, 'shape-rendering': 'crispEdges' });
+      const blocked = new Set('#OBTYK');
+      rows.forEach((row, y) => [...row].forEach((ch, x) => {
+        if (blocked.has(ch)) root.append(svg('rect', { x, y, width: 1, height: 1, fill: 'var(--map-wall)' }));
+        else if (ch === 'G') root.append(svg('rect', { x, y, width: 1, height: 1, fill: 'var(--map-goal)' }));
+      }));
+      root.insertBefore(svg('rect', { x: 0, y: 0, width: cols, height: rows.length, fill: 'var(--map-floor)' }), root.firstChild);
+      const marks = svg('g', { 'shape-rendering': 'auto' });   // 점·✕는 매끄럽게 (칸만 또렷하게)
+      root.append(marks);
+      for (const e of view.episodes.filter(e => e.map === name && e.x !== null)) {
+        const g = GROUPS.find(g => g.key === groupOf(e.stage));
+        const dot = svg('circle', { class: 'dot', cx: e.x, cy: e.y, r: 0.22, fill: g.color, stroke: 'var(--surface)', 'stroke-width': 0.08 });
+        marks.append(hover(dot, () => [el('b', { textContent: `${g.name} · ${(STAGES[e.stage] || [e.stage])[0]}` }),
+          `${e.time.slice(5, 10)} ${e.time.slice(11, 19)} · 자리 (${fmt(e.x, 1)}, ${fmt(e.y, 1)})`, el('br'),
+          `최대 위험도 ${fmt(e.peak)} · ${fmt(e.duration, 1)}초${e.collision ? ' · 충돌로 끝남' : ''}`]));
+      }
+      for (const c of view.collisions.filter(c => c.map === name && c.x !== null)) {
+        const mark = svg('g', { class: 'dot' },
+          svg('circle', { cx: c.x, cy: c.y, r: 0.45, class: 'hit' }),
+          svg('path', { d: `M${c.x - 0.3},${c.y - 0.3} L${c.x + 0.3},${c.y + 0.3} M${c.x + 0.3},${c.y - 0.3} L${c.x - 0.3},${c.y + 0.3}`,
+                        stroke: 'var(--critical)', 'stroke-width': 0.14, 'stroke-linecap': 'round' }));
+        marks.append(hover(mark, () => [el('b', { textContent: `충돌 · ${TARGETS[c.with] || c.with}${c.object ? ` (${c.object})` : ''}` }),
+          `${c.time.slice(5, 10)} ${c.time.slice(11, 19)} · 자리 (${fmt(c.x, 1)}, ${fmt(c.y, 1)})`]));
+      }
+      box.replaceChildren(root);
+    }
+
+    function renderTable(episodes) {
+      const rows = episodes.slice(-500).reverse();
+      byId('an-table-count').textContent = `(${episodes.length}번${episodes.length > 500 ? ', 최근 500번' : ''})`;
+      byId('an-table').replaceChildren(...rows.map(e => el('tr', {},
+        el('td', { textContent: `${e.time.slice(5, 10)} ${e.time.slice(11, 19)}` }),
+        el('td', { textContent: ((analysis.data.maps[e.map] || {}).title) || e.map }),
+        el('td', { textContent: `${fmt(e.x, 1)}, ${fmt(e.y, 1)}` }),
+        el('td', { textContent: (STAGES[e.stage] || [e.stage])[0] }),
+        el('td', { textContent: fmt(e.peak) }),
+        el('td', { textContent: `${fmt(e.duration, 1)}초` }))));
+    }
+
+    // ----- 시험 결과 (GET /api/trials — tools/goal_trials.py가 logs/trials/에 남긴 도착 시험) -----
+    const METHODS = [   // 순서가 곧 색 (방식마다 늘 같은 색)
+      { key: 'human', name: '사람 혼자', color: 'var(--series-base)' },
+      { key: 'connectome', name: '커넥톰', color: 'var(--series-1)' },
+      { key: 'range_connectome', name: '거리 센서→커넥톰', color: 'url(#hatch-range-connectome)',
+        swatch: 'repeating-linear-gradient(45deg, var(--series-1) 0 3px, var(--surface) 3px 5px)' },
+      { key: 'range', name: '거리 센서', color: 'var(--series-2)' },
+      { key: 'detector', name: '물체 인식(이상적)', color: 'var(--series-3)' },
+    ];
+    const methodOf = o => o.method || (o.reflex ? 'connectome' : 'human');
+    const RESULTS = { arrived: '도착', collision: '충돌', timeout: '시간 초과' };
+    const trials = { data: null, index: 0, showTable: false };
+
+    async function loadTrials() {
+      byId('tr-note').textContent = '시험 결과를 읽는 중…';
+      try {
+        const response = await fetch('/api/trials');
+        const keep = trials.data && trials.data.runs[trials.index] ? trials.data.runs[trials.index].file : null;
+        trials.data = await response.json();
+        const runs = trials.data.runs;
+        // 주소가 /trials/<시험>이면 그 시험을 먼저 보인다 (처음 열 때만 — 그 뒤로는 보고 있던 시험을 지킨다)
+        const wanted = keep || routeFromLocation().run;
+        trials.index = Math.max(0, runs.findIndex(r => r.file === wanted || runSlug(r.file) === runSlug(wanted)));
+        byId('tr-run').replaceChildren(...runs.map((r, i) => el('option', { value: String(i), textContent: runTitle(r) })));
+        byId('tr-run').value = String(trials.index);
+        byId('tr-note').textContent = runs.length ? '' : '아직 시험 결과가 없습니다. tools/goal_trials.py를 돌리면 생깁니다.';
+        renderTrials();
+        if (currentTab === 'trials' && runs.length) setAddress(pathFor('trials', runs[trials.index].file), false);
+      } catch (error) {
+        byId('tr-note').textContent = '시험 결과를 읽지 못했습니다.';
+      }
+    }
+    byId('tr-refresh').addEventListener('click', loadTrials);
+    function selectRun(wanted) {  // 주소의 시험(파일 이름이나 <시각>)을 고른다
+      const index = trials.data.runs.findIndex(r => r.file === wanted || runSlug(r.file) === runSlug(wanted));
+      if (index < 0) return;
+      trials.index = index;
+      byId('tr-run').value = String(index);
+      renderTrials();
+    }
+    function pickRun(index) {
+      trials.index = index;
+      byId('tr-run').value = String(index);
+      renderTrials();
+      setAddress(pathFor('trials', trials.data.runs[index].file), true);
+    }
+    byId('tr-run').addEventListener('change', () => pickRun(Number(byId('tr-run').value)));
+    byId('tr-table-toggle').addEventListener('click', () => {
+      trials.showTable = !trials.showTable;
+      byId('tr-table-toggle').setAttribute('aria-pressed', String(trials.showTable));
+      byId('tr-table-card').hidden = !trials.showTable;
+    });
+
+    function conditionText(run) {
+      const parts = [run.brake ? `감속 한계 ${run.brake} m/s²` : '바로 섬'];
+      if (run.bold) parts.push('비키지 않는 사람');
+      return parts.join(' · ');
+    }
+    const runTitle = run => `${(run.time || '').slice(5, 16).replace('T', ' ')} · ${run.label || conditionText(run)}`;
+    const runMethods = run => METHODS.filter(m => (run.methods || []).includes(m.key)
+      || run.outcomes.some(o => methodOf(o) === m.key));
+
+    function summarize(rows) {
+      const arrived = rows.filter(o => o.result === 'arrived');
+      const crashes = rows.filter(o => o.result === 'collision');
+      const sum = (list, key) => list.reduce((s, o) => s + (o[key] || 0), 0);
+      const interventions = sum(arrived, 'interventions'), needless = sum(arrived, 'needless');
+      return {
+        n: rows.length, arrived: arrived.length, crashes: crashes.length,
+        walls: crashes.filter(o => (o.detail || '').startsWith('wall')).length,
+        timeouts: rows.filter(o => o.result === 'timeout').length,
+        interventions, needless, perArrival: arrived.length ? interventions / arrived.length : null,
+        share: sum(arrived, 'reflex_s') / Math.max(sum(arrived, 't'), 1e-9),
+        meanTime: arrived.length ? sum(arrived, 't') / arrived.length : null,
+      };
+    }
+
+    function renderTrials() {
+      const run = trials.data && trials.data.runs[trials.index];
+      const empty = text => [el('p', { className: 'empty', textContent: text })];
+      if (!run) {
+        for (const id of ['tr-tiles', 'tr-maps', 'tr-needless', 'tr-conditions', 'tr-runs', 'tr-table']) byId(id).replaceChildren();
+        return;
+      }
+      const methods = runMethods(run);
+      const mapsCount = (run.maps || []).length, perMap = (run.reactions || []).length * (run.delays || []).length;
+      const minutes = run.finished ? Math.round((new Date(run.finished) - new Date(run.time)) / 60000) : null;
+      byId('tr-conditions').replaceChildren(
+        el('span', { className: run.brake ? 'on' : '', textContent: run.brake ? `감속 한계 ${run.brake} m/s² (2 m/s에서 ${(4 / (2 * run.brake)).toFixed(1)} m 미끄러짐)` : '바로 섬 (제동 거리 0)' }),
+        el('span', { className: run.bold ? 'on' : '', textContent: run.bold ? '튀어나오는 사람이 비키지 않음' : '사람이 로봇 앞에서 비켜 섬' }),
+        el('span', { textContent: `맵 ${mapsCount}개 × ${perMap}판 (반응 ${(run.reactions || []).join('·')}초, 대기 ${(run.delays || []).join('·')}초)` }),
+        el('span', { textContent: `카메라·판단 ${run.camera_period_ms} ms` }),
+        ...(minutes !== null ? [el('span', { textContent: `${(run.time || '').replace('T', ' ')} 시작 · ${minutes}분` })] : []),
+        ...((run.failed_maps || []).length ? [el('span', { className: 'on', textContent: `Webots 실패: ${run.failed_maps.join(', ')}` })] : []));
+      byId('tr-tiles').replaceChildren(...methods.map(m => {
+        const s = summarize(run.outcomes.filter(o => methodOf(o) === m.key));
+        const detail = m.key === 'human' ? `평균 ${fmt(s.meanTime, 1)}초 (도착한 판)`
+          : `도착당 개입 ${fmt(s.perArrival, 1)} · 헛개입 ${s.interventions ? Math.round(100 * s.needless / s.interventions) + '%' : '—'} · 개입 시간 ${Math.round(100 * s.share)}%`;
+        return el('div', { className: 'tile method-tile' },
+          el('span', { className: 'name' }, el('i', { style: `background:${m.swatch || m.color}` }), m.name),
+          el('b', { textContent: `${s.arrived}/${s.n}` }),
+          el('small', { textContent: `도착 · 충돌 ${s.crashes} (사람·공 ${s.crashes - s.walls} / 벽 ${s.walls})${s.timeouts ? ` · 시간 초과 ${s.timeouts}` : ''}` }),
+          el('small', { textContent: detail }));
+      }));
+      const methodLegend = list => list.map(m => el('span', {}, el('i', { style: `background:${m.swatch || m.color}` }), m.name));
+      byId('tr-legend-maps').replaceChildren(...methodLegend(methods));
+      renderTrialMaps(run, methods);
+      renderNeedless(run, methods.filter(m => m.key !== 'human'));
+      renderRuns();
+      const rows = [...run.outcomes].sort((a, b) => (run.maps || []).indexOf(a.scene) - (run.maps || []).indexOf(b.scene)
+        || METHODS.findIndex(m => m.key === methodOf(a)) - METHODS.findIndex(m => m.key === methodOf(b)));
+      byId('tr-table-count').textContent = `(${rows.length}판)`;
+      byId('tr-table').replaceChildren(...rows.map(o => {
+        const tr = el('tr', {},
+          el('td', { textContent: trials.data.titles[o.scene] || o.scene }),
+          el('td', { textContent: (METHODS.find(m => m.key === methodOf(o)) || {}).name || methodOf(o) }),
+          el('td', { textContent: `${o.reaction_s}초` }), el('td', { textContent: `${o.delay_s}초` }),
+          el('td', { textContent: RESULTS[o.result] || o.result }), el('td', { textContent: `${fmt(o.t, 1)}초` }),
+          el('td', { textContent: o.reflex ? `${o.interventions} (${o.needless || 0})` : '—' }),
+          el('td', { textContent: o.detail || '' }));
+        tr.dataset.kind = o.result === 'collision' ? 'collision' : o.result === 'arrived' ? 'arrival' : '';
+        return tr;
+      }));
+    }
+
+    // 맵별 도착: 맵마다 방식별 막대 (세로 축 하나: 도착한 판 수)
+    function renderTrialMaps(run, methods) {
+      const maps = run.maps || [...new Set(run.outcomes.map(o => o.scene))];
+      const box = byId('tr-maps');
+      if (!maps.length) { box.replaceChildren(el('p', { className: 'empty', textContent: '판이 없습니다.' })); return; }
+      const perMap = Math.max(1, ...maps.flatMap(map => methods.map(m =>
+        run.outcomes.filter(o => o.scene === map && methodOf(o) === m.key).length)));
+      const W = 560, H = 230, left = 30, bottom = 40, top = 10;
+      const y = v => top + (H - top - bottom) * (1 - v / perMap);
+      const band = (W - left) / maps.length, gap = 2, barW = Math.min(14, (band * 0.8 - gap * (methods.length - 1)) / methods.length);
+      const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '맵별·방식별 도착한 판 수' });
+      const step = perMap <= 6 ? (perMap <= 3 ? 1 : 2) : niceStep(perMap);
+      for (let v = 0; v <= perMap; v += step) {
+        root.append(svg('line', { class: 'gridline', x1: left, x2: W, y1: y(v), y2: y(v) }),
+                    svg('text', { class: 'axis', x: left - 6, y: y(v) + 4, 'text-anchor': 'end' }, String(v)));
+      }
+      maps.forEach((map, i) => {
+        const x0 = left + band * i + (band - (barW * methods.length + gap * (methods.length - 1))) / 2;
+        methods.forEach((m, k) => {
+          const rows = run.outcomes.filter(o => o.scene === map && methodOf(o) === m.key);
+          if (!rows.length) return;
+          const s = summarize(rows), x = x0 + k * (barW + gap);
+          const h = Math.max(0, y(0) - y(s.arrived));
+          const bar = h > 0 ? svg('path', { class: 'seg', fill: m.color, d: roundedTop(x, y(s.arrived), barW, h, 3) })
+                            : svg('rect', { x, y: y(0) - 2, width: barW, height: 2, fill: m.color, class: 'seg' });
+          const hit = svg('rect', { class: 'hit', x: x - 1, y: top, width: barW + 2, height: y(0) - top });
+          const crashes = rows.filter(o => o.result === 'collision').map(o => (o.detail || '').split(' @')[0]);
+          const lines = () => [el('b', { textContent: `${trials.data.titles[map] || map} · ${m.name}` }),
+            `도착 ${s.arrived}/${s.n}${s.crashes ? ` · 충돌 ${s.crashes}` : ''}${s.timeouts ? ` · 시간 초과 ${s.timeouts}` : ''}`,
+            ...(crashes.length ? [el('br'), `부딪힌 것: ${[...new Set(crashes)].join(', ')}`] : []),
+            ...(m.key !== 'human' && s.interventions ? [el('br'), `개입 ${s.interventions}번 중 헛개입 ${s.needless}번`] : [])];
+          root.append(bar, hover(hit, lines));
+        });
+        const name = trials.data.titles[map] || map;
+        root.append(svg('text', { class: 'axis', x: left + band * (i + 0.5), y: H - 22, 'text-anchor': 'middle' }, name.length > 6 ? name.slice(0, 6) + '…' : name));
+      });
+      root.append(svg('text', { class: 'label', x: left, y: H - 4 }, `세로: 도착한 판 수 (맵마다 ${perMap}판)`));
+      box.replaceChildren(root);
+    }
+
+    // 필요했던 개입과 헛개입: 방식마다 가로로 쌓은 막대 (사람 혼자는 개입이 없어 뺀다)
+    function renderNeedless(run, methods) {
+      byId('tr-legend-needless').replaceChildren(
+        el('span', {}, el('i', { style: 'background:var(--series-1)' }), '필요했던 개입 (방식 색)'),
+        el('span', {}, el('i', { style: 'background:var(--needless)' }), '헛개입'));
+      const box = byId('tr-needless');
+      const rows = methods.map(m => ({ m, s: summarize(run.outcomes.filter(o => methodOf(o) === m.key)) }))
+        .filter(r => r.s.n);
+      if (!rows.length) { box.replaceChildren(el('p', { className: 'empty', textContent: '공유 제어가 함께 달린 판이 없습니다.' })); return; }
+      const W = 560, rowH = 34, left = 120, right = 150, H = rows.length * rowH + 4;
+      const max = Math.max(1, ...rows.map(r => r.s.interventions));
+      const scale = v => (W - left - right) * v / max;
+      const root = svg('svg', { viewBox: `0 0 ${W} ${H}`, role: 'img', 'aria-label': '방식별 필요했던 개입과 헛개입 수' });
+      rows.forEach(({ m, s }, i) => {
+        const yy = i * rowH + 6, needed = s.interventions - s.needless;
+        root.append(svg('text', { class: 'label', x: left - 8, y: yy + 15, 'text-anchor': 'end' }, m.name));
+        const w1 = scale(needed), w2 = scale(s.needless);
+        if (w1 > 0) root.append(svg('rect', { class: 'seg', x: left, y: yy + 4, width: Math.max(1, w1 - (w2 > 0 ? 2 : 0)), height: 16, fill: m.color }));
+        if (w2 > 0) root.append(svg('path', { class: 'seg', fill: 'var(--needless)', d: roundedRight(left + w1, yy + 4, w2, 16, 4) }));
+        const hit = svg('rect', { class: 'hit', x: left, y: yy, width: Math.max(w1 + w2, 20), height: 24 });
+        root.append(hover(hit, () => [el('b', { textContent: m.name }),
+          `개입 ${s.interventions}번 = 필요 ${needed} + 헛개입 ${s.needless}`, el('br'),
+          `도착 ${s.arrived}판 · 도착당 ${fmt(s.perArrival, 1)}번 · 개입 시간 ${Math.round(100 * s.share)}%`]));
+        const pct = s.interventions ? Math.round(100 * s.needless / s.interventions) : 0;
+        root.append(svg('text', { class: 'value', x: left + w1 + w2 + 6, y: yy + 16 },
+          s.interventions ? `${s.interventions}번 · 헛개입 ${pct}%` : '개입 없음'));
+      });
+      box.replaceChildren(root);
+    }
+
+    // 시험마다: 방식별 도착/판 수와 충돌 — 조건(바로 섬 / 현실 조건)끼리 비교
+    function renderRuns() {
+      const runs = trials.data.runs;
+      const methods = METHODS.filter(m => runs.some(r => runMethods(r).includes(m)));
+      byId('tr-runs-head').replaceChildren(el('tr', {}, el('th', { textContent: '시험' }), el('th', { textContent: '조건' }),
+        ...methods.map(m => el('th', {}, el('i', { style: `display:inline-block;width:9px;height:9px;border-radius:2px;margin-right:5px;background:${m.swatch || m.color}` }), m.name))));
+      byId('tr-runs').replaceChildren(...runs.map((run, i) => {
+        const tr = el('tr', {},
+          el('td', { textContent: `${(run.time || '').slice(5, 16).replace('T', ' ')}${run.label ? ' · ' + run.label : ''}` }),
+          el('td', { textContent: conditionText(run) }),
+          ...methods.map(m => {
+            const rows = run.outcomes.filter(o => methodOf(o) === m.key);
+            if (!rows.length) return el('td', { className: 'num', textContent: '—' });
+            const s = summarize(rows);
+            return el('td', { className: 'num', textContent: `${s.arrived}/${s.n} · 충돌 ${s.crashes}` });
+          }));
+        tr.setAttribute('aria-selected', String(i === trials.index));
+        tr.addEventListener('click', () => pickRun(i));
+        return tr;
+      }));
+    }
+
+    // ----- 서버와 연결 (Server-Sent Events) -----
+    function connect() {
+      const source = new EventSource('/api/stream');
+      source.addEventListener('open', () => setStatus('live', '연결됨'));
+      source.addEventListener('error', () => setStatus('offline', '대시보드 서버와 연결이 끊겼습니다. 다시 연결하는 중…'));
+      source.addEventListener('snapshot', e => {
+        const data = JSON.parse(e.data);
+        agents.clear();
+        data.agents.forEach(a => agents.set(a.id, a));
+        events.length = 0;
+        events.push(...data.events);
+        renderAll();
+        renderLog();
+      });
+      source.addEventListener('agent', e => {
+        const update = JSON.parse(e.data);
+        const old = agents.get(update.id) || {};
+        const merged = Object.assign({}, old, update);
+        if (!update.hello) merged.hello = old.hello || {};
+        agents.set(update.id, merged);
+        if ((merged.role === 'webots' || merged.role === 'phone') && merged.state && merged.state.flow) {
+          const list = history.get(merged.id) || [];
+          list.push([performance.now(), merged.state.flow.brain ? merged.state.flow.brain.escape : 0]);
+          while (list.length && performance.now() - list[0][0] > 60000) list.shift();
+          history.set(merged.id, list);
+        }
+        renderAgent(merged);
+      });
+      source.addEventListener('removed', e => {  // 끊긴 지 오래됐거나 같은 이름으로 다시 접속해 서버가 목록에서 뺐다
+        const { id } = JSON.parse(e.data);
+        agents.delete(id);
+        history.delete(id);
+        document.querySelector(`.card[data-agent="${id}"]`)?.remove();
+        showEmpty();
+      });
+      source.addEventListener('event', e => {
+        const record = JSON.parse(e.data);
+        events.push(record);
+        if (record.event && record.event.type === 'arrival') {  // 도착은 화면 구석에도 잠깐 알린다
+          toast(`${record.name || record.agent || '로봇'} 도착 · 커넥톰 개입 ${record.event.interventions}번 · ${fmt(record.event.elapsed, 1)}초`, 6000);
+        }
+        if (events.length > 3000) events.splice(0, events.length - 3000);
+        renderLog();
+      });
+    }
+    function setStatus(state, text) {
+      const s = byId('status');
+      s.dataset.state = state;
+      s.textContent = text;
+    }
+
+    async function command(agentId, name, value) {
+      try {
+        const response = await fetch('/api/command', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json', 'X-Token': token },
+          body: JSON.stringify({ agent: agentId, command: name, value }),
+        });
+        const result = await response.json();
+        toast(result.ok ? '명령을 보냈습니다' : '명령 실패: ' + result.message);
+      } catch (error) {
+        toast('명령 실패: 대시보드 서버에 닿지 않습니다');
+      }
+    }
+    let toastTimer = 0;
+    function toast(text, ms = 2500) {
+      const t = byId('toast');
+      t.textContent = text;
+      t.hidden = false;
+      clearTimeout(toastTimer);
+      toastTimer = setTimeout(() => { t.hidden = true; }, ms);
+    }
+
+    // ----- 카드 그리기 -----
+    function renderAll() {
+      for (const box of ['robots', 'phones', 'brains']) byId(box).replaceChildren();
+      agents.forEach(renderAgent);
+      showEmpty();
+    }
+    function showEmpty() {
+      const robots = [...agents.values()].filter(a => a.role === 'webots');
+      const brains = [...agents.values()].filter(a => a.role === 'brain');
+      const phones = [...agents.values()].filter(a => a.role === 'phone' && a.connected);
+      if (!phones.length) byId('phones').replaceChildren(el('p', { className: 'empty', textContent: "체험 중인 휴대폰이 없습니다. 조작 화면에서 '휴대폰 카메라'를 켜면 기기마다 여기 보입니다." }));
+      if (!robots.length) byId('robots').replaceChildren(el('p', { className: 'empty', textContent: '접속한 로봇이 없습니다. Webots를 REFLEXGUARD_DASHBOARD 주소와 함께 실행하세요.' }));
+      if (!brains.length) byId('brains').replaceChildren(el('p', { className: 'empty', textContent: '접속한 연산 서버가 없습니다.' }));
+      const robotsOn = robots.filter(a => a.connected).length, brainsOn = brains.filter(a => a.connected).length;
+      byId('summary').textContent = `로봇 ${robotsOn}대 · 휴대폰 ${phones.length}대 · 연산 서버 ${brainsOn}대 접속 중`;
+      byId('robots-count').textContent = String(robots.length);
+      byId('phones-count').textContent = String(phones.length);
+      byId('brains-count').textContent = String(brains.length);
+      renderKpis();
+    }
+    // 요약 숫자: 접속 수와 오늘(이 PC의 날짜) 사건 수
+    const localDate = (d = new Date()) => `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+    function renderKpis() {
+      const list = [...agents.values()];
+      const on = role => list.filter(a => a.role === role && a.connected).length;
+      const today = localDate();
+      const todays = type => events.filter(r => (r.time || '').startsWith(today) && r.event && r.event.type === type).length;
+      const danger = list.filter(a => a.connected && a.state && a.state.flow && a.state.flow.reflex
+        && ['stop', 'avoid', 'return', 'veer', 'slow'].includes(a.state.flow.reflex.stage)).length;
+      const tiles = [
+        ['접속한 로봇', on('webots'), `휴대폰 체험 ${on('phone')}대`, ''],
+        ['커넥톰 연산 서버', on('brain'), '접속 중', ''],
+        ['지금 개입 중', danger, '감속·회피·정지', danger ? 'danger' : ''],
+        ['오늘 회피 반사', todays('start'), '작동 횟수', ''],
+        ['오늘 충돌', todays('collision'), '벽·사람·공', todays('collision') ? 'danger' : ''],
+        ['오늘 도착', todays('arrival'), '도착지 도착', todays('arrival') ? 'ok' : ''],
+      ];
+      byId('kpis').replaceChildren(...tiles.map(([label, value, note, tone]) => {
+        const tile = el('div', { className: 'kpi' }, el('span', { textContent: label }), el('b', { textContent: String(value) }),
+          el('small', { textContent: note }));
+        if (tone) tile.dataset.tone = tone;
+        return tile;
+      }));
+    }
+    function tick() {  // 오른쪽 위 시계 (1초마다)
+      byId('clock').textContent = new Date().toLocaleString('ko-KR', { dateStyle: 'medium', timeStyle: 'medium' });
+      setTimeout(tick, 1000 - (Date.now() % 1000));
+    }
+
+    function cardFor(agent) {
+      const box = byId({ webots: 'robots', phone: 'phones' }[agent.role] || 'brains');
+      let card = box.querySelector(`[data-agent="${agent.id}"]`);
+      if (!card) {
+        box.querySelector('.empty')?.remove();
+        card = el('article', { className: 'card' });
+        card.dataset.agent = agent.id;
+        card.innerHTML = { webots: ROBOT_TEMPLATE, phone: PHONE_TEMPLATE }[agent.role] || BRAIN_TEMPLATE;
+        box.prepend(card);
+        if (agent.role === 'webots') wireRobot(card, agent.id); else if (agent.role === 'brain') wireBrain(card, agent.id);
+      }
+      return card;
+    }
+    const keepText = seconds => seconds >= 60 ? `${Math.round(seconds / 60)}분` : `${Math.round(seconds)}초`;
+    function renderAgent(agent) {
+      if (agent.role !== 'webots' && agent.role !== 'brain' && agent.role !== 'phone') return;
+      if (agent.role === 'phone' && !agent.connected) {  // 휴대폰은 체험이 끝나면(30초 쉼) 카드를 치운다 — 사건 기록에는 남는다
+        byId('phones').querySelector(`[data-agent="${agent.id}"]`)?.remove();
+        history.delete(agent.id);
+        showEmpty();
+        return;
+      }
+      const card = cardFor(agent);
+      card.dataset.connected = String(agent.connected);
+      card.querySelector('.name').textContent = agent.name;
+      const conn = card.querySelector('.conn');
+      conn.textContent = agent.connected ? '접속 중' : `끊김 · ${keepText(agent.keep_s || 300)} 뒤 치움`;
+      conn.dataset.tone = agent.connected ? 'ok' : 'danger';
+      card.querySelector('.peer').textContent = `${agent.peer} · ${agent.connected_at.replace('T', ' ').slice(0, 19)}부터`;
+      card.querySelectorAll('button, select').forEach(b => { b.disabled = !agent.connected; });
+      if (agent.role === 'webots') renderRobot(card, agent); else if (agent.role === 'phone') renderPhone(card, agent); else renderBrain(card, agent);
+      showEmpty();
+    }
+
+    const ROBOT_TEMPLATE = `
+      <div class="card-head"><b class="name"></b><span class="chip conn"></span><span class="chip map"></span>
+        <span class="chip stage"></span><span class="chip estop" data-tone="danger" hidden>비상 정지 중</span></div>
+      <div class="muted peer"></div>
+      <div class="gauge"><div class="muted">커넥톰 위험도 <b class="escape">—</b> · 신호 <b class="signal">—</b></div><div class="bar"><i></i></div></div>
+      <div class="views"><canvas class="minimap" width="480" height="260" aria-label="미니맵"></canvas>
+        <canvas class="spark" width="480" height="260" aria-label="최근 60초 위험도"></canvas></div>
+      <dl class="kv">
+        <dt>위치</dt><dd class="pose">—</dd>
+        <dt>옆벽 가까움 (HS)</dt><dd class="near">—</dd>
+        <dt>사용자 → 적용</dt><dd class="cmd">—</dd>
+        <dt>스위치</dt><dd class="switches">—</dd>
+        <dt>커넥톰 계산</dt><dd class="server">—</dd>
+        <dt>충돌</dt><dd class="crash">—</dd>
+        <dt>도착지</dt><dd class="trip">—</dd>
+      </dl>
+      <div class="controls">
+        <button type="button" data-cmd="connectome">커넥톰</button>
+        <button type="button" data-cmd="safety">안전 스위치</button>
+        <button type="button" data-cmd="sensor" title="위험 인식 센서 바꾸기 — 판단·개입은 둘 다 커넥톰">위험 인식</button>
+        <button type="button" class="danger" data-cmd="estop">비상 정지</button>
+        <button type="button" data-cmd="restart">처음부터 다시</button>
+        <select class="map-select" aria-label="맵 고르기"></select>
+        <button type="button" data-cmd="map">맵 바꾸기</button>
+      </div>`;
+    function wireRobot(card, id) {
+      card.querySelector('[data-cmd="connectome"]').addEventListener('click', () => {
+        const s = (agents.get(id) || {}).state || {};
+        command(id, 'connectome', s.connectome ? 'off' : 'on');
+      });
+      card.querySelector('[data-cmd="safety"]').addEventListener('click', () => {
+        const s = (agents.get(id) || {}).state || {};
+        command(id, 'safety', s.safety ? 'off' : 'on');
+      });
+      card.querySelector('[data-cmd="sensor"]').addEventListener('click', () => {
+        const s = (agents.get(id) || {}).state || {};
+        command(id, 'sensor', s.sensor === 'range' ? 'camera' : 'range');
+      });
+      card.querySelector('[data-cmd="estop"]').addEventListener('click', () => {
+        const s = (agents.get(id) || {}).state || {};
+        command(id, 'estop', s.estop ? 'off' : 'on');
+      });
+      card.querySelector('[data-cmd="restart"]').addEventListener('click', () => command(id, 'restart', null));
+      card.querySelector('[data-cmd="map"]').addEventListener('click', () => {
+        command(id, 'map', card.querySelector('.map-select').value);
+      });
+    }
+    function renderRobot(card, agent) {
+      const hello = agent.hello || {};
+      const s = agent.state || {};
+      const flow = s.flow || {};
+      const brain = flow.brain || {};
+      const reflex = flow.reflex || {};
+      const maps = hello.maps || [];
+      const mapTitle = (maps.find(m => m[0] === (s.map || hello.map)) || [])[1] || s.map || hello.map || '—';
+      card.querySelector('.map').textContent = '맵: ' + mapTitle;
+      const [stageLabel, tone] = STAGES[reflex.stage] || ['—', ''];
+      const stage = card.querySelector('.stage');
+      stage.textContent = '공유 제어: ' + stageLabel;
+      stage.dataset.tone = tone;
+      card.querySelector('.estop').hidden = !s.estop;
+      card.querySelector('.escape').textContent = brain.ok === false ? '판단 없음' : fmt(brain.escape);
+      card.querySelector('.signal').textContent = SIGNALS[brain.signal] || brain.signal || '—';
+      const bar = card.querySelector('.bar');
+      bar.querySelector('i').style.width = `${Math.round(Math.min(1, brain.escape || 0) * 100)}%`;
+      const th = s.th || {};
+      bar.dataset.level = (brain.escape || 0) >= (th.decode_stop_on || 0.3) ? 'danger' : (brain.escape || 0) >= (th.decode_stop_off || 0.12) ? 'warn' : 'ok';
+      card.querySelector('.near').textContent = brain.near_left === undefined ? '—'
+        : `왼쪽 ${fmt(brain.near_left)} · 오른쪽 ${fmt(brain.near_right)}`;
+      const pose = flow.pose;
+      card.querySelector('.pose').textContent = pose ? `(${fmt(pose.x, 1)}, ${fmt(pose.y, 1)}) · ${fmt(pose.angle, 0)}°` : '—';
+      const u = flow.user || {}, a = flow.applied || {};
+      card.querySelector('.cmd').textContent = flow.user ? `전진 ${fmt(u.forward)} 회전 ${fmt(u.turn)} → 전진 ${fmt(a.forward)} 회전 ${fmt(a.turn)}` : '—';
+      card.querySelector('.switches').textContent = s.connectome === undefined ? '—'
+        : `${SENSORS[s.sensor] || SENSORS.camera} · 커넥톰 ${s.connectome ? '켜짐' : '꺼짐'} · 안전 스위치 ${s.safety ? '켜짐' : '꺼짐'}${s.estop ? ' · 비상 정지' : ''}`;
+      const server = s.server || {};
+      card.querySelector('.server').textContent = !s.server ? '—' : !server.remote ? '로봇 컨트롤러 안'
+        : `서버 ${server.address} · ${server.connected ? '연결됨' + (typeof server.rtt_ms === 'number' ? ` · 응답 ${fmt(server.rtt_ms, 1)} ms` : '') : '연결 끊김'}`;
+      const crash = s.crash || {};
+      card.querySelector('.crash').textContent = crash.count === undefined ? '—' : `${crash.count}회${crash.frozen ? ' · 지금 충돌 뒤 멈춤' : ''}`;
+      const trip = s.trip;
+      card.querySelector('.trip').textContent = !trip ? '—'
+        : `${trip.arrived ? '도착! 곧 처음부터' : `${fmt(trip.distance, 0)} m 남음`} · 이번 주행 커넥톰 개입 ${trip.interventions}번 · ${fmt(trip.elapsed, 0)}초`
+          + `${trip.attempt > 1 ? ` · ${trip.attempt}번째 시도` : ''}${trip.arrivals ? ` · 도착 ${trip.arrivals}회` : ''}`;
+      card.querySelector('[data-cmd="connectome"]').textContent = s.connectome ? '커넥톰 끄기' : '커넥톰 켜기';
+      card.querySelector('[data-cmd="safety"]').textContent = s.safety ? '안전 스위치 끄기' : '안전 스위치 켜기';
+      card.querySelector('[data-cmd="estop"]').textContent = s.estop ? '비상 정지 해제' : '비상 정지';
+      card.querySelector('[data-cmd="sensor"]').textContent = s.sensor === 'range' ? '위험 인식: 카메라로' : '위험 인식: 거리 센서로';
+      const select = card.querySelector('.map-select');
+      const key = JSON.stringify(maps);
+      if (select.dataset.key !== key) {
+        select.replaceChildren(...maps.map(([name, title]) => new Option(title, name)));
+        select.dataset.key = key;
+        select.value = s.map || hello.map || '';
+      }
+      drawMinimap(card.querySelector('.minimap'), hello.rows, flow.pose, s.actors);
+      drawSpark(card.querySelector('.spark'), history.get(agent.id) || [], th);
+    }
+
+    const CELL_COLORS = { '#': '#3c4250', 'B': '#8a6a5c', 'T': '#d8dce2', 'Y': '#3e7d3e', 'O': '#d88f3e',
+                          ',': '#bfb2a6', '_': '#4e5258', '-': '#4e5258', '!': '#4e5258', '=': '#9a9ea4', '|': '#9a9ea4',
+                          ';': '#5c8c48', '.': '#cbc5ba', 'G': '#3fb67f', 'S': null };
+    function drawMinimap(canvas, rows, pose, actors) {
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      if (!Array.isArray(rows) || !rows.length) return;
+      const h = rows.length, w = rows[0].length;
+      const cell = Math.min(canvas.width / w, canvas.height / h);
+      const ox = (canvas.width - cell * w) / 2, oy = (canvas.height - cell * h) / 2;
+      rows.forEach((row, y) => [...row].forEach((ch, x) => {
+        ctx.fillStyle = CELL_COLORS[ch] || CELL_COLORS[(rows[y][x - 1] || '.')] || '#cbc5ba';
+        ctx.fillRect(ox + x * cell, oy + y * cell, cell + 0.5, cell + 0.5);
+      }));
+      (actors || []).forEach(([x, y, kind]) => {
+        ctx.fillStyle = kind === 'ball' ? '#e5534b' : kind === 'child' ? '#e3a33a' : '#a35fd0';
+        ctx.beginPath();
+        ctx.arc(ox + x * cell, oy + y * cell, Math.max(2.5, cell * (kind === 'adult' ? 0.3 : 0.25)), 0, Math.PI * 2);
+        ctx.fill();
+      });
+      if (pose) {
+        const px = ox + pose.x * cell, py = oy + pose.y * cell, r = Math.max(3, cell * 0.35);
+        const angle = pose.angle * Math.PI / 180;
+        ctx.fillStyle = '#4f8cff';
+        ctx.beginPath(); ctx.arc(px, py, r, 0, Math.PI * 2); ctx.fill();
+        ctx.strokeStyle = '#4f8cff'; ctx.lineWidth = 2;
+        ctx.beginPath(); ctx.moveTo(px, py); ctx.lineTo(px + Math.cos(angle) * r * 2.4, py + Math.sin(angle) * r * 2.4); ctx.stroke();
+      }
+    }
+    function drawSpark(canvas, list, th) {
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height, pad = 18;
+      ctx.clearRect(0, 0, W, H);
+      const y = v => H - pad - Math.min(1, Math.max(0, v)) * (H - 2 * pad);
+      ctx.font = '20px system-ui'; ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted');
+      ctx.fillText('위험도 · 최근 60초', 10, 24);
+      for (const [value, color] of [[th.decode_stop_on || 0.3, '#e5534b'], [th.decode_stop_off || 0.12, '#e3a33a']]) {
+        ctx.strokeStyle = color; ctx.setLineDash([6, 6]); ctx.lineWidth = 1.5;
+        ctx.beginPath(); ctx.moveTo(0, y(value)); ctx.lineTo(W, y(value)); ctx.stroke();
+      }
+      ctx.setLineDash([]);
+      if (list.length < 2) return;
+      const now = performance.now();
+      ctx.strokeStyle = '#4f8cff'; ctx.lineWidth = 2.5;
+      ctx.beginPath();
+      list.forEach(([t, v], i) => {
+        const x = W - (now - t) / 60000 * W;
+        if (i === 0) ctx.moveTo(x, y(v)); else ctx.lineTo(x, y(v));
+      });
+      ctx.stroke();
+    }
+
+    const PHONE_TEMPLATE = `
+      <div class="card-head"><b class="name"></b><span class="chip conn"></span><span class="chip stage"></span></div>
+      <div class="muted peer"></div>
+      <div class="gauge"><div class="muted">커넥톰 위험도 <b class="escape">—</b> · 신호 <b class="signal">—</b></div><div class="bar"><i></i></div></div>
+      <div class="views"><canvas class="cells" width="480" height="260" aria-label="칸별 커넥톰 입력"></canvas>
+        <canvas class="spark" width="480" height="260" aria-label="최근 60초 위험도"></canvas></div>
+      <dl class="kv">
+        <dt>카메라</dt><dd class="camera">—</dd>
+        <dt>내 움직임</dt><dd class="motion">—</dd>
+        <dt>옆벽 가까움 (HS)</dt><dd class="near">—</dd>
+        <dt>손떨림 보정</dt><dd class="shake">—</dd>
+        <dt>영상</dt><dd class="frames">—</dd>
+        <dt>회피 반사 작동</dt><dd class="episodes">—</dd>
+      </dl>`;
+    function renderPhone(card, agent) {
+      const hello = agent.hello || {};
+      const s = agent.state || {};
+      const flow = s.flow || {};
+      const brain = flow.brain || {};
+      const reflex = flow.reflex || {};
+      const phone = s.phone || {};
+      if (hello.client) card.querySelector('.peer').textContent = `휴대폰 ${hello.client} · 체험 서버 ${agent.peer} · ${agent.connected_at.replace('T', ' ').slice(0, 19)}부터`;
+      const [stageLabel, tone] = STAGES[reflex.stage] || ['—', ''];
+      const stage = card.querySelector('.stage');
+      stage.textContent = '판단: ' + stageLabel;
+      stage.dataset.tone = tone;
+      card.querySelector('.escape').textContent = brain.ok === false ? '판단 없음' : fmt(brain.escape);
+      card.querySelector('.signal').textContent = SIGNALS[brain.signal] || brain.signal || '—';
+      const th = s.th || {};
+      const bar = card.querySelector('.bar');
+      bar.querySelector('i').style.width = `${Math.round(Math.min(1, brain.escape || 0) * 100)}%`;
+      bar.dataset.level = (brain.escape || 0) >= (th.decode_stop_on || 0.3) ? 'danger' : (brain.escape || 0) >= (th.decode_stop_off || 0.12) ? 'warn' : 'ok';
+      const fov = phone.fov ?? hello.fov;
+      card.querySelector('.camera').textContent = fov === undefined ? '—'
+        : `화각 ${fmt(fov, 0)}° · 숙임 ${fmt(phone.pitch ?? hello.pitch, 0)}° · 높이 ${fmt(phone.height ?? hello.height, 1)} m`;
+      card.querySelector('.motion').textContent = phone.speed === undefined ? '—' : phone.speed > 0 ? `걷기 ${fmt(phone.speed, 1)} m/s` : '서 있음';
+      card.querySelector('.near').textContent = brain.near_left === undefined ? '—'
+        : `왼쪽 ${fmt(brain.near_left)} · 오른쪽 ${fmt(brain.near_right)}`;
+      const shake = phone.shake || [];
+      card.querySelector('.shake').textContent = shake.length ? `이번 영상 가로 ${fmt(shake[0], 1)} · 세로 ${fmt(shake[1], 1)} 화소 되돌림` : '—';
+      card.querySelector('.frames').textContent = phone.frames === undefined ? '—'
+        : `${phone.frames}장 · 초당 ${fmt(phone.fps, 1)}장 · 한 장 계산 ${fmt(phone.ms, 1)} ms`;
+      const mine = events.filter(r => r.agent === agent.id && r.event && r.event.type === 'start').length;
+      card.querySelector('.episodes').textContent = `${mine}번`;
+      drawCells(card.querySelector('.cells'), s.cells);
+      drawSpark(card.querySelector('.spark'), history.get(agent.id) || [], th);
+    }
+    function drawCells(canvas, cells) {  // 칸별 커넥톰 입력 0~1 (휴대폰 화면의 겹쳐 보기와 같은 칸)
+      const ctx = canvas.getContext('2d');
+      const W = canvas.width, H = canvas.height;
+      ctx.clearRect(0, 0, W, H);
+      ctx.font = '20px system-ui'; ctx.fillStyle = getComputedStyle(document.body).getPropertyValue('--muted');
+      ctx.fillText('칸별 커넥톰 입력', 10, 24);
+      if (!cells || !cells.rows || !cells.cols) return;
+      const top = 34, cw = W / cells.cols, ch = (H - top) / cells.rows;
+      cells.input.forEach((v, i) => {
+        const x = (i % cells.cols) * cw, y = top + Math.floor(i / cells.cols) * ch;
+        ctx.fillStyle = `rgba(229, 83, 75, ${Math.min(1, Math.max(0, v)) * 0.9})`;
+        ctx.fillRect(x + 1, y + 1, cw - 2, ch - 2);
+      });
+      ctx.strokeStyle = 'rgba(128, 128, 128, 0.35)'; ctx.lineWidth = 1;
+      for (let c = 1; c < cells.cols; c++) { ctx.beginPath(); ctx.moveTo(c * cw, top); ctx.lineTo(c * cw, H); ctx.stroke(); }
+      for (let r = 0; r <= cells.rows; r++) { ctx.beginPath(); ctx.moveTo(0, top + r * ch); ctx.lineTo(W, top + r * ch); ctx.stroke(); }
+    }
+
+    const BRAIN_TEMPLATE = `
+      <div class="card-head"><b class="name"></b><span class="chip conn"></span></div>
+      <div class="muted peer"></div>
+      <dl class="kv"><dt>모델</dt><dd class="model">—</dd><dt>받는 주소</dt><dd class="listen">—</dd>
+        <dt>접속한 뇌</dt><dd class="count">—</dd><dt>전체 계산</dt><dd class="total">—</dd></dl>
+      <table><thead><tr><th>접속</th><th>계산 횟수</th><th>평균 계산</th><th>마지막 판단</th></tr></thead><tbody class="sessions"></tbody></table>
+      <div class="controls"><button type="button" data-cmd="reset_all">모든 뇌 상태 초기화</button></div>`;
+    function wireBrain(card, id) {
+      card.querySelector('[data-cmd="reset_all"]').addEventListener('click', () => command(id, 'reset_all', null));
+    }
+    function renderBrain(card, agent) {
+      const hello = agent.hello || {};
+      const s = agent.state || {};
+      card.querySelector('.model').textContent = hello.model || '—';
+      card.querySelector('.listen').textContent = hello.listen || '—';
+      const sessions = s.sessions || [];
+      card.querySelector('.count').textContent = `${sessions.length}개`;
+      card.querySelector('.total').textContent = s.total_steps === undefined ? '—' : `${s.total_steps}번`;
+      card.querySelector('.sessions').replaceChildren(...(sessions.length ? sessions.map(x => el('tr', {},
+        el('td', { textContent: x.peer }), el('td', { textContent: String(x.steps) }),
+        el('td', { textContent: `${fmt(x.avg_ms, 2)} ms` }),
+        el('td', { textContent: x.signal ? `${SIGNALS[x.signal] || x.signal} · 위험도 ${fmt(x.escape)}` : '—' })))
+        : [el('tr', {}, el('td', { colSpan: 4, className: 'muted', textContent: '접속한 로봇이 없습니다' }))]));
+    }
+
+    // ----- 사건 기록 -----
+    function categoryOf(record) {
+      if (record.kind === 'command') return 'command';
+      if (record.kind === 'connection' || (record.event && record.event.type === 'session')) return 'connection';
+      const type = record.event && record.event.type;
+      if (type === 'collision' || type === 'restart') return 'collision';
+      if (type === 'arrival') return 'arrival';
+      if (type === 'start' || type === 'stage' || type === 'end') return 'reflex';
+      return 'other';
+    }
+    function stageCounts(byStage) {
+      const parts = [['stop', '정지'], ['avoid', '회피'], ['veer', '옆벽'], ['slow', '감속']]
+        .filter(([key]) => byStage && byStage[key]).map(([key, name]) => `${name} ${byStage[key]}`);
+      return parts.length ? ` (${parts.join(' · ')})` : '';
+    }
+    function describe(record) {
+      const e = record.event || {};
+      switch (record.kind === 'command' ? 'command' : e.type) {
+        case 'command': return `명령: ${({ connectome: '커넥톰', safety: '안전 스위치', estop: '비상 정지', restart: '처음부터 다시', map: '맵', reset_all: '모든 뇌 초기화', sensor: '위험 인식' })[e.command] || e.command}${e.value ? ' ' + (({ on: '켜기', off: '끄기', camera: '카메라', range: '거리 센서' })[e.value] || e.value) : ''}`;
+        case 'connected': return `접속 (${e.peer || ''})`;
+        case 'disconnected': return '접속 끊김';
+        case 'start': return `회피 반사 시작 #${e.episode} · ${(STAGES[e.reflex && e.reflex.stage] || [e.reflex && e.reflex.stage])[0]} · 위험도 ${fmt(e.brain && e.brain.escape)}`;
+        case 'stage': return `회피 반사 #${e.episode} 단계 → ${(STAGES[e.reflex && e.reflex.stage] || [e.reflex && e.reflex.stage])[0]}`;
+        case 'end': return `회피 반사 #${e.episode} 끝 · ${fmt(e.duration, 1)}초 · 최대 위험도 ${fmt(e.peak_escape)}${e.collision ? ' · 충돌로 끝남' : ''}`;
+        case 'collision': return `충돌 #${e.count} · ${TARGETS[e.with] || e.with || '벽'}${e.object ? ' (' + e.object + ')' : ''} · 위치 (${fmt(e.pose && e.pose.x, 1)}, ${fmt(e.pose && e.pose.y, 1)})`;
+        case 'restart': return e.after === 'arrival' ? '도착 뒤 처음부터 새 주행' : `처음부터 다시 (충돌 ${e.count}회째)`;
+        case 'arrival': return `도착 #${e.count} · ${fmt(e.elapsed, 1)}초 · ${fmt(e.distance, 1)} m · 커넥톰 개입 ${e.interventions}번`
+          + `${stageCounts(e.by_stage)} · ${e.failed_attempts ? `그 전에 ${e.failed_attempts}번 부딪힘` : '한 번에 도착'}`;
+        case 'connectome': return `커넥톰 ${e.on ? '켬' : '끔'}`;
+        case 'safety': return `안전 스위치 ${e.on ? '켬' : '끔'}`;
+        case 'estop': return `비상 정지 ${e.on ? '걸림' : '해제'}`;
+        case 'map': return `맵 바꾸기 → ${e.to}`;
+        case 'sensor': return `위험 인식 → ${e.to === 'range' ? '거리 센서' : '카메라'} (판단은 커넥톰)`;
+        case 'session': return `뇌 ${e.action === 'connected' ? '접속' : e.action === 'disconnected' ? '접속 끊김' : e.action} (${e.peer || ''})`;
+        case 'reset_all': return `모든 뇌 상태 초기화 (${e.count}개)`;
+        case 'dashboard': return `관제 서버 켜짐${e.history ? ` · 지난 기록 ${e.history}개를 위에 이어 보여 줌` : ''}`;
+        default: return JSON.stringify(e).slice(0, 160);
+      }
+    }
+    function renderLog() {
+      const rows = events.filter(r => filter === 'all' || categoryOf(r) === filter).slice(-500).reverse();
+      const today = localDate();
+      byId('log').replaceChildren(...rows.map(r => {
+        const time = r.time || '';
+        // 오늘이 아닌 기록은 날짜도 (지난 세션 기록 — 관제 서버를 다시 켜면 지난 기록 파일에서 읽어 온다)
+        const shown = time.slice(0, 10) === today ? time.slice(11, 19) : `${time.slice(5, 10)} ${time.slice(11, 19)}`;
+        const tr = el('tr', {}, el('td', { textContent: shown }),
+          el('td', { className: 'who', textContent: r.name || r.agent || '', title: r.name || r.agent || '' }),
+          el('td', { textContent: describe(r) }));
+        tr.dataset.kind = categoryOf(r);
+        if (r.past) tr.classList.add('past');
+        return tr;
+      }));
+      byId('event-count').textContent = String(events.length);
+      renderKpis();
+    }
+    byId('filters').addEventListener('click', e => {
+      const button = e.target.closest('button[data-filter]');
+      if (!button) return;
+      filter = button.dataset.filter;
+      byId('filters').querySelectorAll('button').forEach(b => b.setAttribute('aria-pressed', String(b === button)));
+      renderLog();
+    });
+
+    connect();
+    showTab(routeFromLocation().tab);  // 주소의 화면으로 (/ 이면 /live)
+    showAddress();
+    tick();
+  </script>
+</body>
+</html>

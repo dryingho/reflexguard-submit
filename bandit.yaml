@@ -1,0 +1,10 @@
+# bandit 설정 — 파이썬 정적 보안 점검 (KISA SW 공급망 체크리스트 10·11, docs/security-diagnosis.md 6단계)
+#   bandit -c bandit.yaml -r . -ll      # 중간(Medium) 이상만 실패로 본다 (.github/workflows/security.yml)
+exclude_dirs:
+  - attacklab/vulnerable   # 보안 조치 전 고정본 — 일부러 취약하게 둔 복사본
+  - .venv
+  - tests
+skips:
+  - B404   # subprocess 모듈을 쓴다는 알림
+  - B603   # subprocess를 목록 인자로 부름 (셸을 쓰지 않음) — ffmpeg·ffprobe·openssl·Webots, 고정된 명령만 (검토함)
+  - B607   # 그 명령을 PATH에서 찾음 — 위와 같은 고정된 도구
