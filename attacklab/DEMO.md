@@ -1,4 +1,4 @@
-# 어택랩 시연 대본 — 명령어 포함
+# 어택랩 시연
 
 [← 어택랩 README](README.md) · 실습 문서: [연습 1 — 인증 없음](exercises/01-no-auth.md) · [연습 2 — 명령 위조](exercises/02-command-forgery.md)
 
